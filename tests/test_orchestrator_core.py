@@ -307,3 +307,17 @@ def test_skip_cannot_dismiss_an_open_phase_review(orch):
     with pytest.raises(FounderActionError):
         orch.act(rid, {"kind": "skip", "step": "2.1", "outcome": "GO", "reason": "skip ahead"})
     assert orch.store.load(rid).pending["kind"] == "phase_review"
+
+
+def test_refused_override_writes_no_approval_or_log(orch):
+    run = orch.create_run(BRIEF)
+    rid = run.run_id
+    orch.advance(rid); orch.act(rid, {"kind": "approve", "step": "1.1"})
+    orch.advance(rid); orch.act(rid, {"kind": "approve", "step": "1.2"})
+    orch.advance(rid); orch.act(rid, {"kind": "lock_thresholds", "step": "1.3"})
+    orch.advance(rid)
+    entries, approvals = len(orch.log(rid).entries), len(orch.approvals(rid).all())
+    with pytest.raises(FounderActionError):
+        orch.act(rid, {"kind": "decide", "step": "1.3", "outcome": "GO"})   # override without a reason
+    assert len(orch.log(rid).entries) == entries
+    assert len(orch.approvals(rid).all()) == approvals

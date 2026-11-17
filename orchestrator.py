@@ -654,11 +654,16 @@ class Orchestrator:
 
         evidence_gate = any(g in meta.gate_types for g in ("E", "T"))
         is_override = (recommended is None) or (chosen != recommended) or kind == "skip"
+        # Validate everything before anything is written: approvals and log entries are append-only,
+        # so a refused action must leave no trace that reads like an approval.
+        if is_override and not reason:
+            raise FounderActionError("An override needs a reason; it is logged next to the original recommendation.")
+        ack_text = st.output.get("requires_acknowledgment")
+        if chosen == GO and ack_text and not action.get("acknowledge"):
+            raise FounderActionError(f"Approval needs your explicit acknowledgment: {ack_text}")
         if "A" in meta.gate_types:
             self._approval_record(run, meta, st, "approved" if chosen in (GO,) else "rejected", channel, reason)
         if is_override:
-            if not reason:
-                raise FounderActionError("An override needs a reason; it is logged next to the original recommendation.")
             risk = self._skip_risk(meta, gate) if (recommended is None or kind == "skip") else ""
             decision_entry = log.append(agent="founder", action="override_gate", action_type="FOUNDER_OVERRIDE", phase=meta.phase,
                        step=meta.step_id, description=(f"Founder chose {chosen} instead of "
@@ -676,9 +681,6 @@ class Orchestrator:
                                    (f". Note: {reason}" if reason else ""),
                        approved_by="founder", approval_status="APPROVED", approval_channel=channel,
                        gate_outcome=chosen, outcome=chosen.lower())
-        ack_text = st.output.get("requires_acknowledgment")
-        if chosen == GO and ack_text and not action.get("acknowledge"):
-            raise FounderActionError(f"Approval needs your explicit acknowledgment: {ack_text}")
         if chosen == GO and ack_text:
             log.append(agent="founder", action="acknowledge", action_type="FOUNDER_APPROVAL", phase=meta.phase,
                        step=meta.step_id, description=f"Founder acknowledged: {ack_text}", approved_by="founder",
