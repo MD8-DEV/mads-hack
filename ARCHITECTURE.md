@@ -203,8 +203,19 @@ flowchart TB
 
 ## Roadmap
 
-1. **Evidence quality:** fetch and quote the underlying page for each high-impact claim, add a verifier pass that rejects claims a source does not support, and add more free sources (Google Trends via an export, official statistics portals).
-2. **Real-world loops:** import interview notes, survey exports and analytics CSVs directly; schedule re-evaluation when a locked window closes.
-3. **Randomised tests:** two-arm message and price tests with sample-ratio checks, as described in the playbook.
-4. **Multi-founder workspaces:** authentication, roles and an audit view of approvals.
-5. **Optional real integrations behind explicit founder setup:** email sending and a payment provider in test mode, each gated by the same approval code; never enabled by default.
+The roadmap comes from an internal architecture review by two independent reviewers: one covered the core runtime (state machine, data model, gates, approvals, logging); the other covered agents, evidence and operability. Both found the gate engine sound: it is a pure function that keeps measurement state apart from outcomes and never lets a missing value or an override pass. The weak points sit around it.
+
+**Already fixed from the review:** every founder action must answer the item the pipeline is waiting for, so a stray CLI action can no longer dismiss a phase review or close a step. Test-gate thresholds are sealed. Data cannot be resubmitted once a gate has a result. A missed sample floor never produces STOP. The playbook's review set runs as decision-quality evals (`evals/gate_cases.yaml`). Launch posts cannot claim an identity the founder's brief does not support. The committed demo outputs predate these fixes (see the README).
+
+**Next, in priority order:**
+
+1. **Journaled run state.** Make an append-only event journal the source of truth. `run.json` becomes a projection rebuilt by replay, each write checks a revision number, a cross-process lock serialises the web app and CLI, and `cli.py verify` replays a run and checks every gate result. This follows the playbook's blueprint ("save the event and the state transition together; derive the current phase from authoritative records") and fixes lost log entries when two processes touch one run.
+2. **Experiment contract v2.** Add per-metric denominators and floors (so a 1-of-1 click rate cannot pass), eligibility and unit of analysis, rival explanations, an analysis plan (fixed horizon or registered sequential looks), and validity rules (a tracking outage becomes `INVALID_DATA`). Every REPEAT gets a fresh contract version and window, so attempts never pool data.
+3. **Publication verifier.** Before a deliverable is published, check claim-to-evidence entailment against the quoted excerpt, numbers, units and denominators, and the freshness of time-sensitive facts. A claim is `SOURCED` only when the kind of row supports it: the founder's brief supports only `FOUNDER_REPORTED`, and a derived number is a `DERIVED_ESTIMATE` with its formula. Model-written note cells are checked for invented figures.
+4. **Resilient model layer.** Add a per-route circuit breaker that honours `Retry-After` and backs off on 429s and network outages; in the demo log, 24 of 39 calls first hit the same rate-limited route. A per-attempt model-call cache means a retry after an outage resumes the step instead of re-running and re-logging every call.
+5. **Auditable relevance labels for the 1.3 gate.** The model must quote the passage that makes each counted row relevant. A bounded second research pass runs when a source is blocked, and the founder can inspect and dispute individual labels.
+6. **Safe demos.** Export to a staging folder and replace `outputs/` only when every run completed, so an outage cannot wipe committed outputs. Add a labelled replay mode, so someone without a model key can browse a recorded run.
+7. **Founder-flow semantics.** A phase-exit REPEAT resets the rest of the phase and reopens the review. Overrides are counted per attempt, not for the step's whole life. Approvals are fully validated before anything is written. Threshold changes made after data appear in the final memo.
+8. **Live progress.** The run page shows the current agent, model and elapsed time instead of a generic "working" badge.
+
+**Later:** direct import of interview notes, survey exports and analytics CSVs; two-arm message and price tests with sample-ratio checks; multi-founder workspaces with an approval audit view; and optional real integrations (email, a payment provider in test mode) behind explicit founder setup and the same approval code, never enabled by default.

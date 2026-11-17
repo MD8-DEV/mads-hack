@@ -33,6 +33,8 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt   # Windows: .
 
 The committed demo (`outputs/`, `decision_log.json`) was produced with `python cli.py demo`, which runs the briefs in `demo/` with a scripted founder (`demo/*.decisions.yaml`, written by the team member acting as founder). The internet connection dropped during the run, so both runs were resumed where they stopped with `python cli.py script` and exported with `python cli.py export`. Results: the main idea completes all six phases with a final decision of **PIVOT** (its evidence gates were not passed: no interviews, sign-ups or other field data exist yet), and the weak idea is **stopped at step 1.3** on weak evidence (`outputs/phase1_gate_weak-idea-market.md`).
 
+The committed outputs come from that first complete run, which predates the fixes from our evidence and architecture reviews. Those fixes include the launch-post identity check, evidence rows for every cited ID, literal `ASSUMPTION` labels and the founder's decision in every gate report. One of the old launch-post drafts (`outputs/phase5_step2_launch-posts-post-graphicdesign-se.md`) wrongly describes the founder as a designer; the current code rejects such drafts. A re-run on the fixed code was cut short twice by network outages and provider overload, so it was not committed.
+
 ## What works and what is mocked
 
 | Step | What happens | Status |
