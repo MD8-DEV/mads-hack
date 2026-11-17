@@ -1,0 +1,46 @@
+{
+  "step_id": "4.1",
+  "version": 1,
+  "gate_types": [
+    "E"
+  ],
+  "decision": "Keep the recommended price as the provisional launch price, or change the pricing model.",
+  "hypothesis": "Target buyers find the recommended price acceptable and some choose a paid plan on a no-charge pricing page.",
+  "criteria": [
+    {
+      "key": "pricing_responses",
+      "label": "Valid pricing survey responses",
+      "op": ">=",
+      "target": 30.0,
+      "unit": "responses",
+      "kind": "floor",
+      "help": ""
+    },
+    {
+      "key": "price_in_acceptable_range",
+      "label": "Recommended price inside the Van Westendorp acceptable range (1 = inside PMC..PME, 0 = outside)",
+      "op": ">=",
+      "target": 1.0,
+      "unit": "",
+      "kind": "hard",
+      "help": ""
+    },
+    {
+      "key": "paid_plan_click_rate",
+      "label": "Pricing-page visitors who click a paid plan",
+      "op": ">=",
+      "target": 0.05,
+      "unit": "share",
+      "kind": "proportion",
+      "help": ""
+    }
+  ],
+  "window_days": 14,
+  "repeat_band": 0.7,
+  "stop_below": 0.25,
+  "pivot_target": "2.1",
+  "notes": "Prices are prospective. The click test is MOCKED: no payment is taken and no payment details are requested.",
+  "status": "LOCKED",
+  "locked_at": "2026-11-17T19:47:46Z",
+  "locked_by": "founder"
+}

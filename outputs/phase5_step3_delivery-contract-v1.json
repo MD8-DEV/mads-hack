@@ -1,0 +1,56 @@
+{
+  "step_id": "5.3",
+  "version": 1,
+  "gate_types": [
+    "T",
+    "E"
+  ],
+  "decision": "Does the mocked delivery work end to end, and does the launch show real buy intent?",
+  "hypothesis": "Delivery passes every end-to-end test, and at least 3% of at least 500 eligible store visitors request access within 14 days.",
+  "criteria": [
+    {
+      "key": "delivery_tests_pass_rate",
+      "label": "End-to-end delivery tests passing",
+      "op": ">=",
+      "target": 1.0,
+      "unit": "",
+      "kind": "hard",
+      "help": "Share of delivery tests that pass (FIXTURE data)"
+    },
+    {
+      "key": "failure_cases_tested",
+      "label": "Failure cases tested",
+      "op": ">=",
+      "target": 3.0,
+      "unit": "cases",
+      "kind": "hard",
+      "help": "Duplicate order, failed email, invalid product, ..."
+    },
+    {
+      "key": "store_visitors",
+      "label": "Eligible store visitors",
+      "op": ">=",
+      "target": 500.0,
+      "unit": "visitors",
+      "kind": "floor",
+      "help": "Unique non-internal visitor IDs with a store page view in the window"
+    },
+    {
+      "key": "buy_intent_rate",
+      "label": "Mock buy-intent rate",
+      "op": ">=",
+      "target": 0.03,
+      "unit": "",
+      "kind": "proportion",
+      "help": "Unique buy intents (CTA clicks / no-charge requests) / eligible store visitors"
+    }
+  ],
+  "window_days": 14,
+  "repeat_band": 0.7,
+  "stop_below": 0.25,
+  "pivot_target": "4.1",
+  "notes": "Technical and demand criteria are separate: test fixtures never count as visitors or intents. Exclusions: internal/test traffic, fixture and bot-flagged events, duplicates (visitor ID / email hash), events outside the window. Too few visitors routes to 2.1 (channels); visitors without buy intent routes to 4.1 (price), or 2.2 (positioning) by founder choice.",
+  "status": "LOCKED",
+  "locked_at": "2026-11-17T19:50:48Z",
+  "locked_by": "founder"
+}

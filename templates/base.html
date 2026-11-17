@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% if refresh %}<meta http-equiv="refresh" content="3">{% endif %}
+  <title>{% block title %}Venture Validator{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">Venture Validator</a>
+    <nav>
+      <a href="/">Ventures</a>
+      {% if run %}
+        <a href="/runs/{{ run.run_id }}">Run</a>
+        <a href="/runs/{{ run.run_id }}/log">Decision log</a>
+        <a href="/runs/{{ run.run_id }}/evidence">Evidence</a>
+        <a href="/runs/{{ run.run_id }}/outbox">Outbox and site</a>
+      {% endif %}
+    </nav>
+  </header>
+  <main class="container">
+    {% if error %}<div class="box error" role="alert"><strong>Not done:</strong> {{ error }}</div>{% endif %}
+    {% if notice %}<div class="box notice" role="status">{{ notice }}</div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="footer">Open-source prototype. Payments, publishing and sending are MOCKED.</footer>
+</body>
+</html>

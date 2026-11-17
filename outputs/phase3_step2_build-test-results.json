@@ -1,0 +1,278 @@
+{
+  "attempt": 0,
+  "metrics": {
+    "critical_total": 21,
+    "critical_passed": 21,
+    "critical_pass_rate": 1.0,
+    "acceptance_total": 12,
+    "acceptance_met": 12,
+    "acceptance_met_rate": 1.0,
+    "open_critical_high_bugs": 0,
+    "tests_total": 24,
+    "tests_passed": 24
+  },
+  "tests": [
+    {
+      "id": "AC1",
+      "description": "A form to create a new project with a revision limit exists",
+      "critical": true,
+      "passed": true,
+      "detail": "[html_element on product/index.html] 1 element(s) match 'form#new-project' in product/index.html",
+      "kind": "acceptance",
+      "feature": "F1"
+    },
+    {
+      "id": "AC2",
+      "description": "The project creation form includes a numeric input for the revision limit",
+      "critical": true,
+      "passed": true,
+      "detail": "[file_exists on product/index.html] product/index.html exists (12423 bytes)",
+      "kind": "acceptance",
+      "feature": "F1"
+    },
+    {
+      "id": "AC3",
+      "description": "A button to log a new revision request exists on the project view",
+      "critical": true,
+      "passed": true,
+      "detail": "[html_element on product/index.html] 1 element(s) match 'button#log-revision' in product/index.html",
+      "kind": "acceptance",
+      "feature": "F2"
+    },
+    {
+      "id": "AC4",
+      "description": "Clicking the log button increments the displayed round counter",
+      "critical": true,
+      "passed": true,
+      "detail": "[contains on product/index.html] found: 'roundCount' in product/index.html",
+      "kind": "acceptance",
+      "feature": "F2"
+    },
+    {
+      "id": "AC5",
+      "description": "The current round and limit are displayed visibly on the project page",
+      "critical": true,
+      "passed": true,
+      "detail": "[html_element on product/index.html] 1 element(s) match 'span#current-round' in product/index.html",
+      "kind": "acceptance",
+      "feature": "F3"
+    },
+    {
+      "id": "AC6",
+      "description": "The limit value is displayed alongside the current round",
+      "critical": true,
+      "passed": true,
+      "detail": "[html_element on product/index.html] 1 element(s) match 'span#max-rounds' in product/index.html",
+      "kind": "acceptance",
+      "feature": "F3"
+    },
+    {
+      "id": "AC7",
+      "description": "An export button generates a client-ready summary",
+      "critical": true,
+      "passed": true,
+      "detail": "[html_element on product/index.html] 1 element(s) match 'button#export-summary' in product/index.html",
+      "kind": "acceptance",
+      "feature": "F4"
+    },
+    {
+      "id": "AC8",
+      "description": "The export output includes project name, rounds used, rounds remaining, and logged requests",
+      "critical": true,
+      "passed": true,
+      "detail": "[contains on product/index.html] found: 'roundsRemaining' in product/index.html",
+      "kind": "acceptance",
+      "feature": "F4"
+    },
+    {
+      "id": "AC9",
+      "description": "Project data is saved to and loaded from localStorage",
+      "critical": true,
+      "passed": true,
+      "detail": "[contains on product/index.html] found: 'localStorage' in product/index.html",
+      "kind": "acceptance",
+      "feature": "F5"
+    },
+    {
+      "id": "AC10",
+      "description": "Data persists after page reload without any network request",
+      "critical": true,
+      "passed": true,
+      "detail": "[no_external_requests on product/index.html] no network requests found",
+      "kind": "acceptance",
+      "feature": "F5"
+    },
+    {
+      "id": "AC11",
+      "description": "The page is a single self-contained HTML file with inline CSS and JavaScript",
+      "critical": true,
+      "passed": true,
+      "detail": "[file_exists on product/index.html] product/index.html exists (12423 bytes)",
+      "kind": "acceptance",
+      "feature": ""
+    },
+    {
+      "id": "AC12",
+      "description": "A README.md exists with usage instructions and deployment notes",
+      "critical": false,
+      "passed": true,
+      "detail": "[file_exists on product/README.md] product/README.md exists (1957 bytes)",
+      "kind": "acceptance",
+      "feature": ""
+    },
+    {
+      "id": "G1",
+      "description": "Required files exist and no file is empty",
+      "critical": true,
+      "passed": true,
+      "detail": "2 file(s): product/README.md, product/index.html",
+      "kind": "generic",
+      "feature": ""
+    },
+    {
+      "id": "G2",
+      "description": "Total size within 200 KB, at most 10 files, product/ paths only",
+      "critical": true,
+      "passed": true,
+      "detail": "14380 bytes in 2 file(s)",
+      "kind": "generic",
+      "feature": ""
+    },
+    {
+      "id": "G3",
+      "description": "index.html parses with no unclosed critical tags",
+      "critical": true,
+      "passed": true,
+      "detail": "parsed; critical tags balanced",
+      "kind": "generic",
+      "feature": ""
+    },
+    {
+      "id": "G4",
+      "description": "No placeholder text (lorem ipsum, TODO, FIXME)",
+      "critical": true,
+      "passed": true,
+      "detail": "none found",
+      "kind": "generic",
+      "feature": ""
+    },
+    {
+      "id": "G5",
+      "description": "No network requests (external scripts, styles, images, frames, fetch, XHR)",
+      "critical": true,
+      "passed": true,
+      "detail": "none found",
+      "kind": "generic",
+      "feature": ""
+    },
+    {
+      "id": "G6",
+      "description": "No card, CVV, IBAN, bank or password inputs",
+      "critical": true,
+      "passed": true,
+      "detail": "none found",
+      "kind": "generic",
+      "feature": ""
+    },
+    {
+      "id": "G7",
+      "description": "Copy passes the marketing guardrails (no fake proof, urgency or income promises)",
+      "critical": true,
+      "passed": true,
+      "detail": "no violations",
+      "kind": "generic",
+      "feature": ""
+    },
+    {
+      "id": "G8",
+      "description": "product/README.md has a usage section",
+      "critical": true,
+      "passed": true,
+      "detail": "usage heading found",
+      "kind": "generic",
+      "feature": ""
+    },
+    {
+      "id": "G9",
+      "description": "No secrets or keys in the files",
+      "critical": true,
+      "passed": true,
+      "detail": "none found",
+      "kind": "generic",
+      "feature": ""
+    },
+    {
+      "id": "G10",
+      "description": "No payments, checkout or paywalled core features",
+      "critical": true,
+      "passed": true,
+      "detail": "none found",
+      "kind": "generic",
+      "feature": ""
+    },
+    {
+      "id": "G11",
+      "description": "No personal-data fields (email, phone, address)",
+      "critical": false,
+      "passed": true,
+      "detail": "none found",
+      "kind": "generic",
+      "feature": ""
+    },
+    {
+      "id": "G12",
+      "description": "Basic accessibility (lang, title, viewport, labelled fields)",
+      "critical": false,
+      "passed": true,
+      "detail": "all present",
+      "kind": "generic",
+      "feature": ""
+    }
+  ],
+  "model_review": [
+    {
+      "id": "MR1",
+      "title": "Revision limit max attribute not enforced in validation",
+      "severity": "medium",
+      "reproduction": "1. Open the page. 2. Enter a project name. 3. In 'Contracted revision rounds', enter 101 (or any number > 100). 4. Click 'Create project'. The form accepts it because validateCreateForm() only checks limit < 1, not limit > 100.",
+      "expected": "Form should reject values > 100, matching the input's max attribute.",
+      "actual": "Form accepts any positive integer, ignoring the max=\"100\" constraint.",
+      "file": "product/index.html",
+      "label": "MODEL_REVIEW",
+      "counts": false
+    },
+    {
+      "id": "MR2",
+      "title": "Export filename can be empty or invalid if project name contains only special characters",
+      "severity": "low",
+      "reproduction": "1. Create a project with name \"!!!\" (or any string with no alphanumeric chars). 2. Click 'Export client-ready summary'. The downloaded file is named \"-revision-summary.txt\" (leading dash, no actual name).",
+      "expected": "Filename should have a fallback (e.g., 'revision-summary.txt') when sanitization yields empty string.",
+      "actual": "Sanitization regex replaces all non-alphanumeric with '-', then toLowerCase(), resulting in empty base name.",
+      "file": "product/index.html",
+      "label": "MODEL_REVIEW",
+      "counts": false
+    },
+    {
+      "id": "MR3",
+      "title": "Load function does not validate loaded data structure",
+      "severity": "medium",
+      "reproduction": "1. In DevTools console, run: localStorage.setItem('revision-rounds-project', JSON.stringify({project: null, roundCount: 5, revisions: 'not-an-array'})); 2. Reload page. 3. The app shows project view with 'null' as project title, roundCount 5, and crashes when trying to render revisions (TypeError: revisions.forEach is not a function).",
+      "expected": "Load should validate that project is an object with name/limit, roundCount is a number, revisions is an array; on failure, clear storage and show create view.",
+      "actual": "Load trusts parsed JSON structure; malformed data breaks the UI.",
+      "file": "product/index.html",
+      "label": "MODEL_REVIEW",
+      "counts": false
+    },
+    {
+      "id": "MR4",
+      "title": "'New project' button does not actually create a new project; it only switches views",
+      "severity": "low",
+      "reproduction": "1. Create a project 'Project A' with limit 3. 2. Log one revision. 3. Click 'New project' (back-btn). 4. Enter 'Project B' with limit 2 and click 'Create project'. 5. The previous project 'Project A' data is overwritten in localStorage, but the user might expect 'New project' to allow multiple projects side-by-side (README says 'switching projects retains the previous one in localStorage' but only one key exists).",
+      "expected": "Either rename button to 'Back to setup' or implement multi-project support. Current behavior is confusing: 'New project' implies creation, but it's just a view switch that discards the current project on next create.",
+      "actual": "Button shows create view but doesn't reset form to allow a second project without overwriting the first.",
+      "file": "product/index.html",
+      "label": "MODEL_REVIEW",
+      "counts": false
+    }
+  ]
+}

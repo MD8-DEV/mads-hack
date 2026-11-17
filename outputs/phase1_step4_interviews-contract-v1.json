@@ -1,0 +1,55 @@
+{
+  "step_id": "1.4",
+  "version": 1,
+  "gate_types": [
+    "E"
+  ],
+  "decision": "Does the segment show real, costly pain in past behaviour, strong enough to design the business?",
+  "hypothesis": "Freelance web and UI designers working solo on fixed-price client projects describe the problem unprompted, already spend on workarounds, and complete small commitments.",
+  "criteria": [
+    {
+      "key": "interviews_completed",
+      "label": "Interviews completed with screened members of the segment",
+      "op": ">=",
+      "target": 10.0,
+      "unit": "interviews",
+      "kind": "floor",
+      "help": ""
+    },
+    {
+      "key": "problem_unprompted_rate",
+      "label": "Share who describe the problem unprompted or with a specific recent example",
+      "op": ">=",
+      "target": 0.6,
+      "unit": "share",
+      "kind": "proportion",
+      "help": ""
+    },
+    {
+      "key": "workaround_or_spend_rate",
+      "label": "Share who already tried a workaround or spent time or money on it",
+      "op": ">=",
+      "target": 0.3,
+      "unit": "share",
+      "kind": "proportion",
+      "help": ""
+    },
+    {
+      "key": "commitments",
+      "label": "Completed commitments (intro made, artifact shared, follow-up held)",
+      "op": ">=",
+      "target": 3.0,
+      "unit": "commitments",
+      "kind": "scalable",
+      "help": ""
+    }
+  ],
+  "window_days": null,
+  "repeat_band": 0.7,
+  "stop_below": 0.25,
+  "pivot_target": "1.1",
+  "notes": "Fail with clean evidence of low pain: pivot back to 1.1, or STOP if no segment shows pain. Biased recruiting or weak observation: repeat 1.4 within the repeat limit.",
+  "status": "LOCKED",
+  "locked_at": "2026-11-17T19:40:34Z",
+  "locked_by": "founder"
+}

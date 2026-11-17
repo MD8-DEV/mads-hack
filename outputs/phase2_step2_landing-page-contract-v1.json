@@ -1,0 +1,37 @@
+{
+  "step_id": "2.2",
+  "version": 1,
+  "gate_types": [
+    "E"
+  ],
+  "decision": "Is there enough real demand to justify building the MVP (Phase 3)?",
+  "hypothesis": "At least 10% of at least 300 eligible unique visitors from Freelance web and UI designers working solo on fixed-price client projects. The designer is the user, payer, and sole decision-maker. First reachable group: des join the research waitlist within 14 days of the page going live.",
+  "criteria": [
+    {
+      "key": "unique_visitors",
+      "label": "Eligible unique visitors",
+      "op": ">=",
+      "target": 300.0,
+      "unit": "visitors",
+      "kind": "floor",
+      "help": "Unique non-internal visitor IDs with a landing page view in the window"
+    },
+    {
+      "key": "signup_rate",
+      "label": "Visitor-to-waitlist sign-up rate",
+      "op": ">=",
+      "target": 0.1,
+      "unit": "",
+      "kind": "proportion",
+      "help": "Unique sign-ups (by email hash) / eligible unique visitors"
+    }
+  ],
+  "window_days": 14,
+  "repeat_band": 0.7,
+  "stop_below": 0.25,
+  "pivot_target": "1.4",
+  "notes": "Exclusions: internal/test traffic (events flagged internal), fixture and bot-flagged events, duplicate emails (counted once by hash), repeat visits (counted once by visitor ID), events before the lock or after the window. Uses the rate-with-floor default (>= 10% with >= 300 visitors) so the denominator is explicit; the alternative (>= 100 sign-ups) is not used. Follow-up answer rate is reported, not gated. A missed visitor floor routes to 2.1 (channels); a missed rate routes to 1.4.",
+  "status": "LOCKED",
+  "locked_at": "2026-11-17T19:42:34Z",
+  "locked_by": "founder"
+}

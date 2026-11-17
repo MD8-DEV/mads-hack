@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Revision Rounds</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 24px; background: #f5f5f5; color: #1a1a1a; line-height: 1.5; }
+    .container { max-width: 640px; margin: 0 auto; background: white; border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    h1 { margin: 0 0 8px; font-size: 1.75rem; }
+    .subtitle { color: #666; margin-bottom: 24px; }
+    .hidden { display: none !important; }
+    label { display: block; margin-bottom: 6px; font-weight: 500; }
+    input[type="text"], input[type="number"] { width: 100%; padding: 10px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
+    input:invalid { border-color: #c00; }
+    .error { color: #c00; font-size: 0.875rem; margin-top: 4px; min-height: 1.25em; }
+    .btn { padding: 10px 16px; border: none; border-radius: 4px; font-size: 1rem; cursor: pointer; font-weight: 500; }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-secondary { background: #e5e7eb; color: #1a1a1a; }
+    .btn-secondary:hover { background: #d1d5db; }
+    .btn-danger { background: #dc2626; color: white; }
+    .btn-danger:hover { background: #b91c1c; }
+    .form-group { margin-bottom: 16px; }
+    .actions { display: flex; gap: 12px; margin-top: 24px; }
+    .project-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #e5e7eb; }
+    .project-title { margin: 0; font-size: 1.25rem; }
+    .round-display { display: flex; align-items: center; gap: 8px; font-size: 1.125rem; font-weight: 600; }
+    .round-display.over-limit { color: #dc2626; }
+    .revision-form { margin-bottom: 24px; }
+    .revision-list { list-style: none; padding: 0; margin: 0; }
+    .revision-item { padding: 12px; background: #f9fafb; border-radius: 4px; margin-bottom: 8px; border-left: 3px solid #2563eb; }
+    .revision-item:last-child { margin-bottom: 0; }
+    .revision-meta { font-size: 0.875rem; color: #666; margin-bottom: 4px; }
+    .revision-desc { white-space: pre-wrap; }
+    .empty-state { color: #999; text-align: center; padding: 24px; }
+    .export-section { padding-top: 16px; border-top: 1px solid #e5e7eb; }
+    .danger-zone { margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Project Creation View -->
+    <section id="create-view" aria-labelledby="create-heading">
+      <h1 id="create-heading">Revision Rounds</h1>
+      <p class="subtitle">Track client revision requests against your contracted round limit.</p>
+      <form id="new-project" novalidate>
+        <div class="form-group">
+          <label for="project-name">Project name</label>
+          <input type="text" id="project-name" name="projectName" required placeholder="e.g., Acme Corp Website Redesign">
+          <div class="error" id="project-name-error" aria-live="polite"></div>
+        </div>
+        <div class="form-group">
+          <label for="revision-limit">Contracted revision rounds</label>
+          <input type="number" id="revision-limit" name="revisionLimit" required min="1" max="100" value="3" placeholder="e.g., 3">
+          <div class="error" id="revision-limit-error" aria-live="polite"></div>
+        </div>
+        <div class="actions">
+          <button type="submit" class="btn btn-primary">Create project</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Project View -->
+    <section id="project-view" class="hidden" aria-labelledby="project-heading">
+      <div class="project-header">
+        <h1 id="project-heading" class="project-title"></h1>
+        <button type="button" class="btn btn-secondary" id="back-btn">New project</button>
+      </div>
+      <div class="round-display" id="round-display" role="status" aria-live="polite">
+        <span>Round</span>
+        <span id="current-round">0</span>
+        <span>of</span>
+        <span id="max-rounds">0</span>
+      </div>
+      <form class="revision-form" id="revision-form">
+        <div class="form-group">
+          <label for="revision-desc">Revision request description</label>
+          <input type="text" id="revision-desc" name="revisionDesc" required placeholder="e.g., Client requested header color change and font size increase">
+          <div class="error" id="revision-desc-error" aria-live="polite"></div>
+        </div>
+        <div class="actions">
+          <button type="submit" class="btn btn-primary" id="log-revision">Log revision request</button>
+        </div>
+      </form>
+      <ul class="revision-list" id="revision-list" aria-label="Logged revision requests"></ul>
+      <div class="export-section">
+        <button type="button" class="btn btn-primary" id="export-summary">Export client-ready summary</button>
+      </div>
+      <div class="danger-zone">
+        <button type="button" class="btn btn-danger" id="clear-all">Clear all data</button>
+      </div>
+    </section>
+  </div>
+  <script>
+    (function () {
+      const STORAGE_KEY = 'revision-rounds-project';
+      const createView = document.getElementById('create-view');
+      const projectView = document.getElementById('project-view');
+      const newProjectForm = document.getElementById('new-project');
+      const projectNameInput = document.getElementById('project-name');
+      const revisionLimitInput = document.getElementById('revision-limit');
+      const projectNameError = document.getElementById('project-name-error');
+      const revisionLimitError = document.getElementById('revision-limit-error');
+      const projectTitle = document.getElementById('project-heading');
+      const currentRoundEl = document.getElementById('current-round');
+      const maxRoundsEl = document.getElementById('max-rounds');
+      const roundDisplay = document.getElementById('round-display');
+      const revisionForm = document.getElementById('revision-form');
+      const revisionDescInput = document.getElementById('revision-desc');
+      const revisionDescError = document.getElementById('revision-desc-error');
+      const logRevisionBtn = document.getElementById('log-revision');
+      const revisionList = document.getElementById('revision-list');
+      const exportBtn = document.getElementById('export-summary');
+      const clearAllBtn = document.getElementById('clear-all');
+      const backBtn = document.getElementById('back-btn');
+
+      let project = null;
+      let roundCount = 0;
+      let revisions = [];
+
+      function save() {
+        const data = { project, roundCount, revisions };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      }
+
+      function load() {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return false;
+        try {
+          const data = JSON.parse(raw);
+          project = data.project;
+          roundCount = data.roundCount || 0;
+          revisions = data.revisions || [];
+          return true;
+        } catch {
+          return false;
+        }
+      }
+
+      function renderProjectView() {
+        if (!project) return;
+        projectTitle.textContent = project.name;
+        currentRoundEl.textContent = String(roundCount);
+        maxRoundsEl.textContent = String(project.limit);
+        roundDisplay.classList.toggle('over-limit', roundCount > project.limit);
+        revisionList.innerHTML = '';
+        if (revisions.length === 0) {
+          revisionList.innerHTML = '<li class="empty-state">No revision requests logged yet.</li>';
+        } else {
+          revisions.forEach((rev, idx) => {
+            const li = document.createElement('li');
+            li.className = 'revision-item';
+            const meta = document.createElement('div');
+            meta.className = 'revision-meta';
+            meta.textContent = `Round ${idx + 1} • ${new Date(rev.timestamp).toLocaleString()}`;
+            const desc = document.createElement('div');
+            desc.className = 'revision-desc';
+            desc.textContent = rev.description;
+            li.appendChild(meta);
+            li.appendChild(desc);
+            revisionList.appendChild(li);
+          });
+        }
+      }
+
+      function showCreateView() {
+        createView.classList.remove('hidden');
+        projectView.classList.add('hidden');
+        newProjectForm.reset();
+        projectNameError.textContent = '';
+        revisionLimitError.textContent = '';
+      }
+
+      function showProjectView() {
+        createView.classList.add('hidden');
+        projectView.classList.remove('hidden');
+        renderProjectView();
+      }
+
+      function validateCreateForm() {
+        let valid = true;
+        if (!projectNameInput.value.trim()) {
+          projectNameError.textContent = 'Project name is required.';
+          valid = false;
+        } else {
+          projectNameError.textContent = '';
+        }
+        const limit = parseInt(revisionLimitInput.value, 10);
+        if (!revisionLimitInput.value.trim() || isNaN(limit) || limit < 1) {
+          revisionLimitError.textContent = 'Enter a valid number of rounds (1 or more).';
+          valid = false;
+        } else {
+          revisionLimitError.textContent = '';
+        }
+        return valid;
+      }
+
+      function validateRevisionForm() {
+        if (!revisionDescInput.value.trim()) {
+          revisionDescError.textContent = 'Description is required.';
+          return false;
+        }
+        revisionDescError.textContent = '';
+        return true;
+      }
+
+      newProjectForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (!validateCreateForm()) return;
+        project = {
+          name: projectNameInput.value.trim(),
+          limit: parseInt(revisionLimitInput.value, 10)
+        };
+        roundCount = 0;
+        revisions = [];
+        save();
+        showProjectView();
+      });
+
+      revisionForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (!validateRevisionForm()) return;
+        roundCount += 1;
+        revisions.push({
+          description: revisionDescInput.value.trim(),
+          timestamp: Date.now()
+        });
+        revisionDescInput.value = '';
+        save();
+        renderProjectView();
+      });
+
+      exportBtn.addEventListener('click', () => {
+        if (!project) return;
+        const roundsRemaining = Math.max(0, project.limit - roundCount);
+        const lines = [
+          `Revision Summary — ${project.name}`,
+          `Contracted rounds: ${project.limit}`,
+          `Rounds used: ${roundCount}`,
+          `Rounds remaining: ${roundsRemaining}`,
+          '',
+          'Logged requests:'
+        ];
+        if (revisions.length === 0) {
+          lines.push('  (none)');
+        } else {
+          revisions.forEach((rev, idx) => {
+            const date = new Date(rev.timestamp).toLocaleString();
+            lines.push(`  ${idx + 1}. [${date}] ${rev.description}`);
+          });
+        }
+        lines.push('', '— Generated by Revision Rounds');
+        const content = lines.join('\n');
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${project.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-revision-summary.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+
+      clearAllBtn.addEventListener('click', () => {
+        if (!confirm('Delete all project data? This cannot be undone.')) return;
+        localStorage.removeItem(STORAGE_KEY);
+        project = null;
+        roundCount = 0;
+        revisions = [];
+        showCreateView();
+      });
+
+      backBtn.addEventListener('click', () => {
+        showCreateView();
+      });
+
+      // Initialize
+      if (load() && project) {
+        showProjectView();
+      } else {
+        showCreateView();
+      }
+    })();
+  </script>
+</body>
+</html>

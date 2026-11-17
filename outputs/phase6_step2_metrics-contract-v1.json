@@ -1,0 +1,55 @@
+{
+  "step_id": "6.2",
+  "version": 1,
+  "gate_types": [
+    "E"
+  ],
+  "decision": "Do users activate, stay and care enough to keep building?",
+  "hypothesis": "A mature cohort activates, a fifth still use the product in week 4, and 40% would be very disappointed without it.",
+  "criteria": [
+    {
+      "key": "eligible_cohort",
+      "label": "Eligible new users with a complete activation window",
+      "op": ">=",
+      "target": 30.0,
+      "unit": "users",
+      "kind": "floor",
+      "help": ""
+    },
+    {
+      "key": "activation_rate",
+      "label": "Activation rate",
+      "op": ">=",
+      "target": 0.4,
+      "unit": "share",
+      "kind": "proportion",
+      "help": ""
+    },
+    {
+      "key": "week4_retention",
+      "label": "Week-4 retention",
+      "op": ">=",
+      "target": 0.2,
+      "unit": "share",
+      "kind": "proportion",
+      "help": ""
+    },
+    {
+      "key": "very_disappointed_rate",
+      "label": "Sean Ellis 'very disappointed' share",
+      "op": ">=",
+      "target": 0.4,
+      "unit": "share",
+      "kind": "proportion",
+      "help": ""
+    }
+  ],
+  "window_days": 35,
+  "repeat_band": 0.7,
+  "stop_below": 0.25,
+  "pivot_target": "3.1",
+  "notes": "Week-4 retention needs cohorts at least 35 days old. Rates are computed in code from submitted counts.",
+  "status": "LOCKED",
+  "locked_at": "2026-11-17T20:03:39Z",
+  "locked_by": "founder"
+}

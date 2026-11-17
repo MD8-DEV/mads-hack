@@ -1,0 +1,51 @@
+# Scripted founder answers for the main demo run (written by the team member acting as founder).
+# No field research was done during the hackathon: every evidence gate that needs real-world data
+# is skipped with an explicit, logged FOUNDER_OVERRIDE and stays recorded as NOT passed.
+founder: "Team member acting as founder"
+export_prefix: ""
+retry_on_error: 2
+max_actions: 200
+steps:
+  "1.1": {decision: approve}
+  "1.2": {decision: select_concept, concept_id: recommended}
+  "1.3":
+    lock: default
+    lock_reason: "Default thresholds accepted before any research runs."
+    outcome: GO
+    reason: "Demo run: continue to the later phases whatever this gate shows; its result stays recorded as is."
+    on_no_data: {outcome: GO, reason: "Desk research returned no usable counts; continuing the demo with this gate unpassed."}
+  "1.4":
+    lock: default
+    on_no_data: {outcome: GO, reason: "No interviews have been done yet (hackathon demo). Continuing to show later steps; this evidence gate stays unpassed."}
+  "2.1": {decision: approve}
+  "2.2":
+    lock: default
+    approve_outward: true
+    on_no_data: {outcome: GO, reason: "The 14-day landing-page window has not run. Continuing the demo; this evidence gate stays unpassed."}
+  "3.1": {decision: approve}
+  "3.2": {decision: approve}
+  "3.3":
+    lock: default
+    on_no_data: {outcome: GO, reason: "No usability sessions have been run yet. Docs reviewed; this evidence gate stays unpassed."}
+  "4.1":
+    lock: default
+    on_no_data: {outcome: GO, reason: "No pricing survey responses yet. The price stays a provisional hypothesis; this gate stays unpassed."}
+  "4.2": {decision: approve, acknowledge: true}
+  "5.1": {decision: approve}
+  "5.2": {decision: approve, outward_ids: all}
+  "5.3":
+    lock: default
+    on_no_data: {outcome: GO, reason: "Delivery tests ran; the 14-day store traffic window has not. Demand part of this gate stays unpassed."}
+  "6.1":
+    lock: default
+    on_no_data: {outcome: GO, reason: "No real support tickets exist yet. This gate stays unpassed."}
+  "6.2":
+    lock: default
+    on_no_data: {outcome: GO, reason: "No real user cohort exists yet. This gate stays unpassed."}
+  "6.3": {decision: approve}
+phase_reviews:
+  "1": {match: "Yes", issues: "No interviews done yet; desk research only.", confidence: 3}
+  "2": {match: "Yes", issues: "Landing-page test not run yet.", confidence: 3}
+  "3": {match: "Yes", issues: "No usability sessions yet.", confidence: 3}
+  "4": {match: "Yes", issues: "Price is a hypothesis; policies need a lawyer.", confidence: 3}
+  "5": {match: "Yes", issues: "No real launch traffic; everything outward is MOCKED.", confidence: 3}

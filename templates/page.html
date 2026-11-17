@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>{{ title }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="public">
+  {% if mocked %}<div class="mockbar" role="note">MOCKED: no payment was taken. This is a prototype of the delivery flow.</div>{% endif %}
+  <main class="container narrow">
+    <h1>{{ title }}</h1>
+    <p class="lead">{{ message }}</p>
+
+    {% if order %}
+      <table>
+        <tbody>
+          <tr><th>Order request</th><td>{{ order.order_id }}</td></tr>
+          <tr><th>Product</th><td>{{ order.product_id }}</td></tr>
+          <tr><th>Advertised price</th><td>{{ order.price }} {{ order.currency }} (not charged)</td></tr>
+          <tr><th>Email</th><td>{{ order.buyer_email_masked }}</td></tr>
+          {% if email_status %}<tr><th>Confirmation email</th><td>{{ email_status }}</td></tr>{% endif %}
+        </tbody>
+      </table>
+    {% endif %}
+    {% if access_url %}
+      <p><a class="button primary" href="{{ access_url }}">Open your access link</a></p>
+      <p class="small muted">Keep this link: it is how the mocked delivery grants access. It stops working after a refund.</p>
+    {% endif %}
+
+    {% if product_html %}
+      <iframe class="product" sandbox="allow-scripts allow-forms" srcdoc="{{ product_html }}" title="Product"></iframe>
+    {% elif missing_product %}
+      <p class="box notice">Access works, but no product file has been built yet (step 3.2).</p>
+    {% endif %}
+
+    {% if back_url %}<p><a href="{{ back_url }}">Back</a></p>{% endif %}
+  </main>
+  <footer class="footer">Open-source prototype. Payments, publishing and sending are MOCKED.</footer>
+</body>
+</html>

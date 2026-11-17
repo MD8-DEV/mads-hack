@@ -1,0 +1,46 @@
+{
+  "step_id": "3.2",
+  "version": 1,
+  "gate_types": [
+    "T"
+  ],
+  "decision": "Ship the build to user testing (3.3), fix it (repeat), or rescope (3.1)",
+  "hypothesis": "The build meets every acceptance criterion from 3.1 and passes every critical check.",
+  "criteria": [
+    {
+      "key": "critical_pass_rate",
+      "label": "Critical checks passed",
+      "op": ">=",
+      "target": 1.0,
+      "unit": "share",
+      "kind": "hard",
+      "help": ""
+    },
+    {
+      "key": "acceptance_met_rate",
+      "label": "Acceptance criteria met",
+      "op": ">=",
+      "target": 1.0,
+      "unit": "share",
+      "kind": "hard",
+      "help": ""
+    },
+    {
+      "key": "open_critical_high_bugs",
+      "label": "Open critical/high bugs",
+      "op": "<=",
+      "target": 0.0,
+      "unit": "bugs",
+      "kind": "hard",
+      "help": ""
+    }
+  ],
+  "window_days": null,
+  "repeat_band": 0.7,
+  "stop_below": 0.25,
+  "pivot_target": "3.1",
+  "notes": "Test-gate policy: 100% critical checks, every acceptance criterion, no open critical/high bugs. Failing tests are fixed and re-run, never skipped.",
+  "status": "LOCKED",
+  "locked_at": "2026-11-17T19:45:55Z",
+  "locked_by": "system:tests"
+}

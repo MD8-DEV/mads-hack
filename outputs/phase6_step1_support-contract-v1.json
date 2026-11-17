@@ -1,0 +1,46 @@
+{
+  "step_id": "6.1",
+  "version": 1,
+  "gate_types": [
+    "E"
+  ],
+  "decision": "Is support responsive enough to keep operating?",
+  "hypothesis": "Real users get a first response within a day and no critical issue stays open beyond 72 hours.",
+  "criteria": [
+    {
+      "key": "tickets_observed",
+      "label": "Real support tickets observed",
+      "op": ">=",
+      "target": 1.0,
+      "unit": "tickets",
+      "kind": "floor",
+      "help": ""
+    },
+    {
+      "key": "median_first_response_hours",
+      "label": "Median first response (calendar hours)",
+      "op": "<=",
+      "target": 24.0,
+      "unit": "hours",
+      "kind": "scalable",
+      "help": ""
+    },
+    {
+      "key": "critical_open_over_72h",
+      "label": "Unresolved critical issues older than 72 hours",
+      "op": "<=",
+      "target": 0.0,
+      "unit": "issues",
+      "kind": "hard",
+      "help": ""
+    }
+  ],
+  "window_days": 14,
+  "repeat_band": 0.7,
+  "stop_below": 0.25,
+  "pivot_target": "3.2",
+  "notes": "Drills are kept apart from real tickets and never count as response evidence.",
+  "status": "LOCKED",
+  "locked_at": "2026-11-17T19:51:14Z",
+  "locked_by": "founder"
+}

@@ -1,0 +1,46 @@
+{
+  "step_id": "3.3",
+  "version": 1,
+  "gate_types": [
+    "E"
+  ],
+  "decision": "Accept the docs and move to Phase 4, fix the build (3.2), or rethink the solution (2.1)",
+  "hypothesis": "At least 80% of at least 5 target users reach the first-value event (Designer logs a revision request, sees the round count update, and exports the summary to share with the client) without help, with no critical failures.",
+  "criteria": [
+    {
+      "key": "participants",
+      "label": "Target users tested",
+      "op": ">=",
+      "target": 5.0,
+      "unit": "users",
+      "kind": "floor",
+      "help": ""
+    },
+    {
+      "key": "unassisted_completion_rate",
+      "label": "Completed the core task without help",
+      "op": ">=",
+      "target": 0.8,
+      "unit": "share",
+      "kind": "proportion",
+      "help": ""
+    },
+    {
+      "key": "critical_failures",
+      "label": "Critical failures observed",
+      "op": "<=",
+      "target": 0.0,
+      "unit": "failures",
+      "kind": "hard",
+      "help": ""
+    }
+  ],
+  "window_days": 14,
+  "repeat_band": 0.7,
+  "stop_below": 0.25,
+  "pivot_target": "2.1",
+  "notes": "Formative usability round. Completion counts only the silent (unassisted) phase.",
+  "status": "LOCKED",
+  "locked_at": "2026-11-17T19:46:45Z",
+  "locked_by": "founder"
+}

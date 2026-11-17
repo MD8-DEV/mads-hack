@@ -1,0 +1,16 @@
+# Scripted founder answers for the weak-idea demo run (written by the team member acting as founder).
+# The founder keeps the original idea and accepts whatever the evidence gate recommends.
+founder: "Team member acting as founder"
+export_prefix: "weak-idea"
+retry_on_error: 2
+max_actions: 60
+steps:
+  "1.1": {decision: approve}
+  "1.2": {decision: select_concept, concept_id: C0, reason: "Founder wants to test the original idea before any alternative."}
+  "1.3":
+    lock: default
+    lock_reason: "Default thresholds accepted before any research runs."
+    decision: approve
+    on_no_data: {outcome: STOP, reason: "No usable evidence for the problem was found; the founder shelves the idea."}
+phase_reviews:
+  "1": {match: "Yes", issues: "", confidence: 3}

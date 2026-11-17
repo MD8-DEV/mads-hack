@@ -1,0 +1,341 @@
+{% extends "base.html" %}
+{% block title %}{{ run.title }} - Venture Validator{% endblock %}
+{% block content %}
+<section class="runhead">
+  <h1>{{ run.title }}</h1>
+  <p><code class="statusline">{{ status_line }}</code>
+     <span class="badge status-{{ run.status|lower }}">{{ run.status }}</span>
+     {% if advancing or refresh %}<span class="badge working">working&hellip; (page refreshes every 3 s)</span>{% endif %}</p>
+  {% if run.status_reason %}<p class="box {{ 'error' if run.status == 'STOPPED' else 'notice' }}">{{ run.status_reason }}</p>{% endif %}
+  {% if run.intake %}
+    <p class="muted">Brief check: {{ run.intake.score_line }}
+      {% if run.intake.rubric and run.intake.rubric.red_flags %} &middot; Red flags: {{ run.intake.rubric.red_flags|join("; ") }}{% endif %}</p>
+  {% endif %}
+  {% if run.final_decision %}
+    <p class="box notice">Final decision: <strong>{{ run.final_decision.decision }}</strong>
+      (memo recommended {{ run.final_decision.memo_recommendation or "n/a" }}){% if run.final_decision.reason %}: {{ run.final_decision.reason }}{% endif %}</p>
+  {% endif %}
+</section>
+
+{% set kind = pending.kind %}
+{% if kind %}
+<section class="panel pending">
+  {# ------------------------------------------------------------------ lock thresholds #}
+  {% if kind == "lock_thresholds" %}
+    {% set c = pending.contract or {} %}
+    <h2>Lock the thresholds for step {{ pending.step }}{% if pmeta %} {{ pmeta.name }}{% endif %}</h2>
+    <p>{{ pending.prompt }}</p>
+    {% if c.hypothesis %}<p><strong>Hypothesis:</strong> {{ c.hypothesis }}</p>{% endif %}
+    {% if c.decision %}<p><strong>Decision rule:</strong> {{ c.decision }}</p>{% endif %}
+    <p class="muted">Window: {{ c.window_days ~ " days" if c.window_days else "not time-boxed" }} &middot;
+       near-miss repeat band: {{ ((c.repeat_band or 0.7) * 100)|round|int }}% of target &middot;
+       STOP below {{ ((c.stop_below or 0.25) * 100)|round|int }}% &middot; version {{ c.version or 1 }}</p>
+    <form method="post" action="/runs/{{ run.run_id }}/act" class="stack">
+      <input type="hidden" name="kind" value="lock_thresholds">
+      <input type="hidden" name="step" value="{{ pending.step }}">
+      <table>
+        <thead><tr><th>Criterion</th><th>Kind</th><th>Rule</th><th>Target</th><th>Notes</th></tr></thead>
+        <tbody>
+        {% for cr in c.criteria or [] %}
+          <tr>
+            <td>{{ cr.label }}<br><small class="muted">{{ cr.key }}</small></td>
+            <td>{{ cr.kind }}</td>
+            <td>{{ cr.op }}</td>
+            <td><input type="number" step="any" name="targets.{{ cr.key }}" value="{{ cr.target }}" aria-label="Target for {{ cr.label }}"> {{ cr.unit }}</td>
+            <td class="small">{{ cr.help }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% if pending.outward %}
+        <fieldset class="mocked">
+          <legend>Publish before data collection (MOCKED)</legend>
+          <ul>{% for o in pending.outward %}<li>{{ o.kind }} <code>{{ o.item_id }}</code> &rarr; {{ o.target_name or o.file }}</li>{% endfor %}</ul>
+          <label class="inline"><input type="checkbox" name="approve_outward" value="on">
+            I approve these items for the local MOCKED site/outbox (nothing leaves this machine).</label>
+        </fieldset>
+      {% endif %}
+      <label>Note (optional) <input name="reason" maxlength="500"></label>
+      <button type="submit" class="primary">Lock thresholds</button>
+    </form>
+    {% if pending_deliverable %}
+      <details><summary>Deliverable so far</summary><div class="md">{{ pending_deliverable|markdown }}</div></details>
+    {% endif %}
+    <details class="alt">
+      <summary>Stop the venture here</summary>
+      <form method="post" action="/runs/{{ run.run_id }}/act" class="stack">
+        <input type="hidden" name="kind" value="stop"><input type="hidden" name="step" value="{{ pending.step }}">
+        <label>Reason <span class="req">required</span><textarea name="reason" rows="2" required maxlength="2000"></textarea></label>
+        <button type="submit" class="danger">Stop</button>
+      </form>
+    </details>
+
+  {# ------------------------------------------------------------------ submit data #}
+  {% elif kind == "submit_data" %}
+    <h2>Submit data for step {{ pending.step }}{% if pmeta %} {{ pmeta.name }}{% endif %}</h2>
+    <p>{{ pending.prompt }}</p>
+    {% if pending.partial %}
+      <p class="muted">Already observed by the system:
+        {% for k, v in pending.partial.items() %}<code>{{ k }} = {{ "n/a" if v is none else v }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+    {% endif %}
+    {% set fields = pending.fields or [] %}
+    {% if fields %}
+    <form method="post" action="/runs/{{ run.run_id }}/act" class="stack">
+      <input type="hidden" name="kind" value="submit_data">
+      <input type="hidden" name="step" value="{{ pending.step }}">
+      {% for f in fields %}
+        <label>{{ f.label }} <small class="muted">({{ f.key }}{% if f.required %}, needed for the gate{% endif %})</small>
+          {% if f.type == "json" %}
+            <textarea name="data.{{ f.key }}" rows="5" maxlength="20000" placeholder="JSON"></textarea>
+          {% elif f.type == "text" %}
+            <textarea name="data.{{ f.key }}" rows="3" maxlength="20000"></textarea>
+          {% elif f.type == "choice" %}
+            <select name="data.{{ f.key }}"><option value="">-</option>{% for ch in f.choices %}<option>{{ ch }}</option>{% endfor %}</select>
+          {% else %}
+            <input type="number" step="{{ '1' if f.type == 'integer' else 'any' }}" name="data.{{ f.key }}">
+          {% endif %}
+        </label>
+        {% if f.help %}<p class="small muted">{{ f.help }}</p>{% endif %}
+      {% endfor %}
+      <p class="small muted">Submit only what you actually measured. Missing values keep the gate unevaluated; nothing is filled in for you.</p>
+      <button type="submit" class="primary">Submit data</button>
+    </form>
+    {% else %}
+      <p class="muted">This step defines no data fields.</p>
+    {% endif %}
+    <div class="grid two">
+      <details class="alt">
+        <summary>Skip this gate</summary>
+        <form method="post" action="/runs/{{ run.run_id }}/act" class="stack">
+          <input type="hidden" name="kind" value="skip_gate"><input type="hidden" name="step" value="{{ pending.step }}">
+          <p class="small">Logged as FOUNDER_OVERRIDE. It never counts as a passed evidence gate, and the untested risk is recorded.</p>
+          <label>Reason <span class="req">required</span><textarea name="reason" rows="2" required maxlength="2000"></textarea></label>
+          <button type="submit">Skip with this reason</button>
+        </form>
+      </details>
+      <details class="alt">
+        <summary>Stop the venture here</summary>
+        <form method="post" action="/runs/{{ run.run_id }}/act" class="stack">
+          <input type="hidden" name="kind" value="stop"><input type="hidden" name="step" value="{{ pending.step }}">
+          <label>Reason <span class="req">required</span><textarea name="reason" rows="2" required maxlength="2000"></textarea></label>
+          <button type="submit" class="danger">Stop</button>
+        </form>
+      </details>
+    </div>
+
+  {# ------------------------------------------------------------------ decision #}
+  {% elif kind == "decision" and d %}
+    <h2>Decision: step {{ d.meta.step_id }} {{ d.meta.name }}</h2>
+    <p>{{ pending.prompt }}</p>
+    <p>Gate status: <span class="badge">{{ pending.status or "n/a" }}</span>
+       Recommendation: <span class="badge outcome-{{ (pending.recommendation or 'none')|lower }}">{{ pending.recommendation or "none (not evaluable)" }}</span>
+       &middot; <a href="/runs/{{ run.run_id }}/steps/{{ d.meta.step_id }}">all artifacts of this step</a></p>
+    {% if d.gate_md %}<div class="md gate">{{ d.gate_md|markdown }}</div>{% endif %}
+    {% if d.deliverable_md %}
+      <details open><summary>Deliverable</summary><div class="md">{{ d.deliverable_md|markdown }}</div></details>
+    {% endif %}
+
+    {% if d.meta.step_id == "6.3" %}
+      <form method="post" action="/runs/{{ run.run_id }}/act" class="stack panel-inner">
+        <h3>Record your final decision</h3>
+        <input type="hidden" name="kind" value="final_decision"><input type="hidden" name="step" value="6.3">
+        <label>Decision
+          <select name="final_decision" required>
+            {% for option in ["PERSEVERE", "PIVOT", "STOP"] %}
+              <option value="{{ option }}" {% if option == (d.memo_recommendation or "")|upper %}selected{% endif %}>{{ option }}{% if option == (d.memo_recommendation or "")|upper %} (memo recommendation){% endif %}</option>
+            {% endfor %}
+          </select></label>
+        <label>Reason <small class="muted">(required if it differs from the memo; logged as FOUNDER_OVERRIDE)</small>
+          <textarea name="reason" rows="2" maxlength="2000"></textarea></label>
+        <button type="submit" class="primary">Record decision</button>
+      </form>
+    {% else %}
+      <form method="post" action="/runs/{{ run.run_id }}/act" class="stack panel-inner">
+        <h3>{{ "Approve" if pending.status == "PENDING_APPROVAL" else "Accept the recommendation" }}</h3>
+        <input type="hidden" name="step" value="{{ d.meta.step_id }}">
+        {% if d.concepts %}
+          <input type="hidden" name="kind" value="select_concept">
+          <label>Concept to carry forward
+            <select name="concept_id">
+              {% for c in d.concepts %}
+                <option value="{{ c.id }}" {% if c.id|string == d.recommended_id|string %}selected{% endif %}>
+                  {{ c.rank ~ ". " if c.rank }}{{ c.name }}{% if c.weighted_total is not none %} ({{ c.weighted_total }}){% endif %}{% if c.id|string == d.recommended_id|string %} - recommended{% endif %}</option>
+              {% endfor %}
+            </select></label>
+        {% else %}
+          <input type="hidden" name="kind" value="approve">
+        {% endif %}
+        {% if d.ack %}
+          <label class="inline"><input type="checkbox" name="acknowledge" value="on" required> I acknowledge: {{ d.ack }}</label>
+        {% endif %}
+        {% if d.outward %}
+          <fieldset class="mocked">
+            <legend>Publish / send on approval (MOCKED: local site and outbox only)</legend>
+            <input type="hidden" name="outward_present" value="1">
+            {% for o in d.outward %}
+              <label class="inline"><input type="checkbox" name="outward_ids" value="{{ o.item_id }}" {% if d.outward_default_checked %}checked{% endif %}>
+                {{ o.kind }} <code>{{ o.item_id }}</code> &rarr; {{ o.target_name or o.file }}</label>
+            {% endfor %}
+          </fieldset>
+        {% endif %}
+        <label>{{ "Reason (required when you pick a lower-ranked concept)" if d.concepts else "Note (optional)" }}
+          <textarea name="reason" rows="2" maxlength="2000"></textarea></label>
+        <button type="submit" class="primary">{{ "Approve" if pending.status == "PENDING_APPROVAL" else "Accept " ~ (pending.recommendation or "") }}</button>
+      </form>
+    {% endif %}
+
+    {% if "reject" in (pending.options or []) %}
+      <form method="post" action="/runs/{{ run.run_id }}/act" class="stack panel-inner">
+        <h3>Reject with feedback</h3>
+        <input type="hidden" name="kind" value="reject"><input type="hidden" name="step" value="{{ d.meta.step_id }}">
+        <label>What should change? <span class="req">required</span>
+          <textarea name="reason" rows="3" required maxlength="3000"></textarea></label>
+        <button type="submit">Reject and redo (repeat {{ d.st.repeat_count }}/2 used)</button>
+      </form>
+    {% endif %}
+
+    {% if d.data_fields %}
+      <details class="alt">
+        <summary>Submit data for this gate</summary>
+        <form method="post" action="/runs/{{ run.run_id }}/act" class="stack">
+          <input type="hidden" name="kind" value="submit_data"><input type="hidden" name="step" value="{{ d.meta.step_id }}">
+          {% for f in d.data_fields %}
+            <label>{{ f.label }} <small class="muted">({{ f.key }})</small>
+              {% if f.type in ("json", "text") %}<textarea name="data.{{ f.key }}" rows="3" maxlength="20000"></textarea>
+              {% else %}<input type="number" step="any" name="data.{{ f.key }}">{% endif %}</label>
+          {% endfor %}
+          <button type="submit">Submit data</button>
+        </form>
+      </details>
+    {% endif %}
+
+    {% if d.meta.step_id != "6.3" %}
+    <details class="alt">
+      <summary>Decide another outcome (logged as FOUNDER_OVERRIDE)</summary>
+      <form method="post" action="/runs/{{ run.run_id }}/act" class="stack">
+        <input type="hidden" name="kind" value="decide"><input type="hidden" name="step" value="{{ d.meta.step_id }}">
+        <label>Outcome
+          <select name="outcome" required>
+            {% for o in ["GO", "REPEAT", "PIVOT_BACK", "STOP"] %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+          </select></label>
+        <label>Pivot back to (only for PIVOT_BACK)
+          <select name="pivot_target">
+            <option value="">default ({{ d.meta.pivot_target or "none" }})</option>
+            {% for s in d.earlier %}<option value="{{ s.step_id }}">{{ s.step_id }} {{ s.name }}</option>{% endfor %}
+          </select></label>
+        {% if d.ack %}<label class="inline"><input type="checkbox" name="acknowledge" value="on"> I acknowledge: {{ d.ack }} (needed for GO)</label>{% endif %}
+        {% if d.outward %}
+          <fieldset class="mocked"><legend>Items to publish/send if GO (MOCKED)</legend>
+            <input type="hidden" name="outward_present" value="1">
+            {% for o in d.outward %}<label class="inline"><input type="checkbox" name="outward_ids" value="{{ o.item_id }}"> {{ o.kind }} <code>{{ o.item_id }}</code></label>{% endfor %}
+          </fieldset>
+        {% endif %}
+        <label>Reason <span class="req">required</span><textarea name="reason" rows="2" required maxlength="2000"></textarea></label>
+        <button type="submit">Record this outcome</button>
+      </form>
+    </details>
+    {% endif %}
+
+  {# ------------------------------------------------------------------ phase review #}
+  {% elif kind == "phase_review" %}
+    {% set s = pending.summary or {} %}
+    <h2>End of phase {{ pending.phase }}: {{ PHASE_NAMES[pending.phase|int] }}</h2>
+    <p>{{ pending.prompt }}</p>
+    {% if s.summary %}<div class="md">{{ s.summary|markdown }}</div>{% endif %}
+    <div class="grid three small">
+      {% if s.confirmed %}<div><strong>Confirmed</strong><ul>{% for x in s.confirmed %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+      {% if s.killed %}<div><strong>Disproven</strong><ul>{% for x in s.killed %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+      {% if s.open %}<div><strong>Still open</strong><ul>{% for x in s.open %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+    </div>
+    <form method="post" action="/runs/{{ run.run_id }}/act" class="stack">
+      <input type="hidden" name="kind" value="phase_review">
+      <fieldset><legend>{{ pending.questions[0] if pending.questions else "Do these deliverables match what you need?" }}</legend>
+        {% for m in ["Yes", "Partly", "No"] %}<label class="inline"><input type="radio" name="match" value="{{ m }}" required> {{ m }}</label>{% endfor %}
+      </fieldset>
+      <label>{{ pending.questions[1] if pending.questions|length > 1 else "Is anything unclear, missing or wrong?" }}
+        <textarea name="issues" rows="3" maxlength="3000"></textarea></label>
+      <label>{{ pending.questions[2] if pending.questions|length > 2 else "Rate your confidence to proceed, 1-5." }}
+        <select name="confidence" required><option value="">-</option>{% for n in range(1, 6) %}<option value="{{ n }}">{{ n }}</option>{% endfor %}</select></label>
+      <label>Step to repeat if the answer is Partly/No or confidence is 2 or lower (optional)
+        <select name="repeat_step"><option value="">last step of the phase</option>
+          {% for s2 in review_steps or [] %}<option value="{{ s2.step_id }}">{{ s2.step_id }} {{ s2.name }}</option>{% endfor %}
+        </select></label>
+      <p class="small muted">Your confidence is recorded separately from evidence; it cannot pass a failed evidence gate.</p>
+      <button type="submit" class="primary">Submit review</button>
+    </form>
+
+  {# ------------------------------------------------------------------ clarify brief #}
+  {% elif kind == "clarify_brief" %}
+    <h2>Clarify the brief</h2>
+    <p>{{ pending.prompt }}</p>
+    {% if pending.questions %}<ol>{% for q in pending.questions %}<li>{{ q }}</li>{% endfor %}</ol>{% endif %}
+    <form method="post" action="/runs/{{ run.run_id }}/act" class="stack">
+      <input type="hidden" name="kind" value="clarify_brief">
+      {% for key in brief_fields %}
+        <label>{{ key|replace("_", " ")|capitalize }}
+          <textarea name="brief.{{ key }}" rows="{{ 3 if key in ('idea', 'evidence') else 1 }}" maxlength="5000">{{ run.brief.get(key, "") }}</textarea></label>
+      {% endfor %}
+      <button type="submit" class="primary">Update the brief and re-check</button>
+    </form>
+
+  {# ------------------------------------------------------------------ retry #}
+  {% elif kind == "retry" %}
+    <h2>Something went wrong in step {{ pending.step }}</h2>
+    <p>{{ pending.prompt }}</p>
+    {% if pending.detail %}<details><summary>Technical detail</summary><pre>{{ pending.detail }}</pre></details>{% endif %}
+    <form method="post" action="/runs/{{ run.run_id }}/act">
+      <input type="hidden" name="kind" value="retry">
+      <button type="submit" class="primary">Retry</button>
+    </form>
+  {% else %}
+    <p>{{ pending.prompt }}</p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if messages %}
+<section class="panel">
+  <h2>Messages</h2>
+  <ul class="messages">
+    {% for m in messages %}
+      <li class="{{ 'refused' if m.refused }}{{ ' err' if m.error }}"><small class="muted">{{ m.role }} &middot; {{ m.at }}</small><div class="pre">{{ m.text }}</div></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Ask for something</h2>
+  <form method="post" action="/runs/{{ run.run_id }}/request" class="stack">
+    <textarea name="text" rows="2" maxlength="2000" placeholder="A change or a question for the current step"></textarea>
+    <p class="small muted">Requests that break the rules (fake reviews or sign-ups, fake urgency, income promises, impersonation, taking payments) are refused and logged.</p>
+    <button type="submit">Send</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Steps</h2>
+  <table class="timeline">
+    <thead><tr><th>Phase</th><th>Step</th><th>Gate</th><th>Status</th><th>Outcome</th></tr></thead>
+    <tbody>
+    {% for row in timeline %}
+      <tr class="{{ 'current' if row.current }}">
+        <td>{{ row.meta.phase }} {{ row.meta.phase_name }}</td>
+        <td><a href="/runs/{{ run.run_id }}/steps/{{ row.meta.step_id }}">{{ row.meta.step_id }} {{ row.meta.name }}</a>{% if row.attempt %} <small class="muted">attempt {{ row.attempt }}</small>{% endif %}</td>
+        <td>{{ row.meta.gate_types|join(" + ") }}</td>
+        <td><span class="badge">{{ row.status }}</span></td>
+        <td>{% if row.outcome %}<span class="badge outcome-{{ row.outcome|lower }}">{{ row.outcome }}</span>{% endif %}
+            {% if row.overridden %}<span class="badge override">overridden</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% if site_files %}
+<section class="panel">
+  <h2>Local MOCKED site (published after your approval)</h2>
+  <ul>{% for f in site_files %}<li><a href="/site/{{ run.run_id }}/{{ f }}" target="_blank" rel="noopener">{{ f }}</a></li>{% endfor %}</ul>
+</section>
+{% endif %}
+{% endblock %}

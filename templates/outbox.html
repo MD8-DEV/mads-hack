@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Outbox - {{ run.title }}{% endblock %}
+{% block content %}
+<section class="runhead">
+  <p><a href="/runs/{{ run.run_id }}">&larr; {{ run.title }}</a></p>
+  <h1>Outbox and local site</h1>
+  <p><code class="statusline">{{ status_line }}</code></p>
+  <div class="box mocked"><strong>MOCKED: not sent.</strong> Nothing here left this machine. Approved posts and messages wait here
+    for you to send yourself, from your own accounts, if you choose. Order confirmation emails are records only.</div>
+</section>
+
+<section class="panel">
+  <h2>Local MOCKED site</h2>
+  {% if site_files %}
+    <ul>{% for f in site_files %}<li><a href="/site/{{ run.run_id }}/{{ f }}" target="_blank" rel="noopener">{{ f }}</a></li>{% endfor %}</ul>
+  {% else %}<p class="muted">Nothing published yet. Pages appear here only after you approve them.</p>{% endif %}
+</section>
+
+<section class="panel">
+  <h2>Posts and messages (MOCKED: not sent)</h2>
+  {% for f in files %}
+    <details><summary>{{ f.name }}</summary><pre>{{ f.text }}</pre></details>
+  {% else %}<p class="muted">The outbox is empty.</p>{% endfor %}
+</section>
+
+<section class="panel">
+  <h2>Order confirmation emails (MOCKED: not sent)</h2>
+  {% if emails %}
+  <table>
+    <thead><tr><th>Email</th><th>Order</th><th>To (masked)</th><th>Status</th><th>Attempts</th><th>Created (UTC)</th></tr></thead>
+    <tbody>{% for e in emails %}
+      <tr><td>{{ e.email_id }}</td><td>{{ e.order_id }}</td><td>{{ e.to_masked }}</td><td>{{ e.status }}</td><td>{{ e.attempts|length }}</td><td>{{ e.created_at }}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+  {% else %}<p class="muted">No mock orders yet.</p>{% endif %}
+</section>
+
+{% if recon %}
+<section class="panel">
+  <h2>Reconciliation of mock orders (MOCKED: no money moved)</h2>
+  <p>{% if recon.ok %}<span class="badge outcome-go">clean</span>{% else %}<span class="badge outcome-stop">{{ recon.mismatches|length }} mismatch(es)</span>{% endif %}
+     Orders: {{ recon.totals.orders }} &middot; deliveries: {{ recon.totals.deliveries }} &middot; refunds: {{ recon.totals.refunds }} &middot; active access: {{ recon.totals.active_access_tokens }}</p>
+  {% for cur, m in recon.totals.money.items() %}
+    <p class="small">{{ cur }}: mock gross {{ "%.2f"|format(m.gross) }}, fees {{ "%.2f"|format(m.fees) }}, net {{ "%.2f"|format(m.net) }}, refunds {{ "%.2f"|format(m.refunds) }} (records only; nothing was charged)</p>
+  {% endfor %}
+  {% if recon.mismatches %}<ul>{% for m in recon.mismatches %}<li>{{ m.kind }}: {{ m.message }}</li>{% endfor %}</ul>{% endif %}
+  {% if recon.warnings %}<ul class="muted">{% for w in recon.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}
+</section>
+{% endif %}
+{% endblock %}

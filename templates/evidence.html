@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Evidence - {{ run.title }}{% endblock %}
+{% block content %}
+<section class="runhead">
+  <p><a href="/runs/{{ run.run_id }}">&larr; {{ run.title }}</a></p>
+  <h1>Evidence ledger</h1>
+  <p><code class="statusline">{{ status_line }}</code></p>
+  <p class="muted">Every SOURCED claim in a deliverable cites one of these IDs. FIXTURE rows are test data and never count in a gate.</p>
+</section>
+<div class="scroll">
+<table>
+  <thead><tr><th>ID</th><th>Provenance</th><th>Source</th><th>Title / excerpt</th><th>Value</th><th>Observed</th><th>Retrieved</th><th>Method / limits</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr class="{{ 'fixture' if r.provenance == 'FIXTURE' }}">
+      <td>{{ r.evidence_id }}</td>
+      <td><span class="badge">{{ r.provenance }}</span></td>
+      <td>{% set u = r.url|safe_url %}{% if u %}<a href="{{ u }}" target="_blank" rel="noopener noreferrer">{{ r.source_type or "link" }}</a>{% else %}{{ r.source_type or "-" }}{% endif %}</td>
+      <td class="small"><strong>{{ r.title }}</strong>{% if r.excerpt %}<br>{{ r.excerpt }}{% endif %}</td>
+      <td>{{ "" if r.value is none else r.value }} {{ r.unit }}</td>
+      <td class="nowrap">{{ r.observed_at or "-" }}</td>
+      <td class="nowrap">{{ r.retrieved_at[:10] }}</td>
+      <td class="small">{{ r.method }}{% if r.limitations %}<br><em>{{ r.limitations }}</em>{% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="muted">No evidence yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

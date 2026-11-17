@@ -1,0 +1,18 @@
+# Demo founder brief (input written by the team member acting as founder for the demo run).
+title: Revision Rounds - scope tracker for freelance web designers
+idea: >
+  A small browser-based tool that helps freelance web designers log each client revision request,
+  count it against the number of revision rounds agreed in the project scope, and produce a clear
+  summary to share with the client before extra rounds turn into unpaid work.
+customer: Freelance web and UI designers who work alone on fixed-price client projects
+why_you: >
+  The founding team are student developers with front-end skills (HTML, CSS, JavaScript) who can
+  build and ship a small static web tool quickly. We have no special access to designers yet;
+  any access is unverified.
+jurisdiction: Egypt
+budget: USD 0 cash, free tiers only
+time: About 10 hours per week for the next 6 weeks
+evidence: >
+  None collected yet: no interviews, no sign-ups, no data. The idea comes from reading public
+  complaints about scope creep, which we have not counted or verified.
+values: No dark patterns, no fake urgency, privacy-first (project data stays in the user's browser).

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Decision log - {{ run.title }}{% endblock %}
+{% block content %}
+<section class="runhead">
+  <p><a href="/runs/{{ run.run_id }}">&larr; {{ run.title }}</a></p>
+  <h1>Decision log</h1>
+  <p><code class="statusline">{{ status_line }}</code></p>
+  <p>{{ entries|length }} entries &middot; total model cost <strong>${{ "%.6f"|format(total_cost) }}</strong> (as reported by the providers; free and local models report $0)
+     &middot; <a href="/runs/{{ run.run_id }}/log.json">log.json</a></p>
+</section>
+<div class="scroll">
+<table class="log">
+  <thead><tr><th>ID</th><th>Time (UTC)</th><th>Agent</th><th>Action</th><th>Type</th><th>Step</th><th>Description</th><th>Sources</th><th>Model</th><th>Cost</th><th>Approved by</th><th>Outcome</th></tr></thead>
+  <tbody>
+  {% for e in entries %}
+    <tr class="type-{{ (e.action_type or '')|lower }}">
+      <td>{{ e.log_id }}</td>
+      <td class="nowrap">{{ e.timestamp }}</td>
+      <td>{{ e.agent }}</td>
+      <td>{{ e.action }}</td>
+      <td>{{ e.action_type }}</td>
+      <td>{{ e.step }}</td>
+      <td class="small">{{ e.description }}</td>
+      <td class="small">{% for s in e.sources or [] %}{% set u = s|safe_url %}{% if u %}<a href="{{ u }}" target="_blank" rel="noopener noreferrer">{{ u[:60] }}</a>{% if not loop.last %}<br>{% endif %}{% endif %}{% endfor %}</td>
+      <td class="small">{{ e.model or "-" }}</td>
+      <td>{{ "%.6f"|format(e.cost or 0) }}</td>
+      <td>{{ e.approved_by or "-" }}</td>
+      <td>{{ e.gate_outcome or e.outcome or "" }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="12" class="muted">No entries yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

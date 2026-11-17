@@ -1,0 +1,37 @@
+{
+  "step_id": "1.3",
+  "version": 1,
+  "gate_types": [
+    "E"
+  ],
+  "decision": "Is there enough public evidence of the problem, and a reachable community, to justify customer interviews for 'Lefty Walls - weekly wallpapers for left-handed people'?",
+  "hypothesis": "Left-handed university students in Cairo who use a computer daily discuss this problem publicly and gather in at least one sizeable community the founder can reach.",
+  "criteria": [
+    {
+      "key": "independent_discussions",
+      "label": "Independent public discussions of the problem in the last 24 months",
+      "op": ">=",
+      "target": 5.0,
+      "unit": "discussions",
+      "kind": "scalable",
+      "help": "Hacker News, Reddit and Stack Exchange threads labelled relevant; a story and its comments count once."
+    },
+    {
+      "key": "largest_community_members",
+      "label": "Members of the largest verified community where the segment gathers (published audience, not eligible reach)",
+      "op": ">=",
+      "target": 1000.0,
+      "unit": "members",
+      "kind": "scalable",
+      "help": "Subreddit subscribers or Stack Exchange registered users, as published."
+    }
+  ],
+  "window_days": null,
+  "repeat_band": 0.7,
+  "stop_below": 0.25,
+  "pivot_target": "1.1",
+  "notes": "Desk research uses free public sources only. 'No results' is a coverage gap, not proof of absent demand; missing measurements wait for founder data with source URLs.",
+  "status": "LOCKED",
+  "locked_at": "2026-11-17T20:09:14Z",
+  "locked_by": "founder"
+}

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Revision Rounds - scope tracker for freelance web designers pricing (proposed)</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; background: #fafafa; color: #1d1d1f; line-height: 1.55; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+  .banner { background: #fff4ce; border: 1px solid #d9b500; border-radius: 8px; padding: 12px 16px; font-weight: 600; margin-bottom: 24px; }
+  .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .plan { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 16px; }
+  .plan.recommended { border-color: #3b5bdb; }
+  .price { font-size: 1.6em; font-weight: 700; }
+  .muted { color: #555; font-size: 0.9em; }
+  button { font: inherit; padding: 8px 14px; border-radius: 6px; border: 1px solid #3b5bdb; background: #3b5bdb; color: #fff; cursor: pointer; }
+  .coming-soon { display: none; margin-top: 10px; padding: 8px; border-radius: 6px; background: #eef2ff; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; vertical-align: top; }
+  footer { margin-top: 40px; color: #555; font-size: 0.85em; }
+</style>
+</head>
+<body>
+<main>
+<div class="banner">MOCKED pricing page for a no-charge click test. Prices are proposed future prices. No payment is taken.</div>
+<h1>Stop working for free on revisions you already agreed to limit.</h1><p>These are proposed future prices for Revision Rounds - scope tracker for freelance web designers. This page only measures interest: choosing a plan does not take any payment and does not ask for any payment details.</p><div class="plans"><div class="plan"><h2>Starter</h2><div class="muted">Proposed future price</div><div class="price">0 EGP</div><div class="muted">per month per account</div><ul><li>Create one active project with contracted revision-round limit</li><li>Log unlimited client revision requests for that project</li><li>Real-time round counter vs. limit</li><li>Export one-page client-ready summary (HTML/PDF)</li><li>Local-first storage (no account required)</li></ul><button type="button" data-plan="starter" onclick="choosePlan(this)">Choose plan</button><div class="coming-soon" role="status">Coming soon: no payment is taken. (MOCKED)</div></div><div class="plan recommended"><h2>Pro</h2><div class="muted">Proposed future price</div><div class="price">150 EGP</div><div class="muted">per month per account</div><ul><li>Everything in Starter</li><li>Unlimited concurrent projects</li><li>Project history &amp; archiving</li><li>Client-sharing link (read-only summary view)</li><li>Email reminder when a project nears its revision limit</li><li>Priority support via email</li></ul><button type="button" data-plan="pro" onclick="choosePlan(this)">Choose plan</button><div class="coming-soon" role="status">Coming soon: no payment is taken. (MOCKED)</div></div></div><script>function choosePlan(btn){var box=btn.parentNode.querySelector('.coming-soon');if(box){box.style.display='block';}}</script>
+<footer>MOCKED: local prototype page. Nothing is sold here and no payment provider is connected.</footer>
+</main>
+</body>
+</html>

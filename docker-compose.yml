@@ -1,0 +1,50 @@
+# One-command setup:
+#
+#   docker compose up
+#
+# then open http://localhost:8000. It starts without any API key or .env file.
+# To use models, copy .env.example to .env and add a free key (Hack Club, Groq
+# or NVIDIA), or run a local open-weight model with Ollama:
+#
+#   OLLAMA_BASE_URL=http://ollama:11434 docker compose --profile local up
+#
+# (or put OLLAMA_BASE_URL=http://ollama:11434 in .env). The "local" profile
+# starts Ollama and pulls qwen3:8b once (about 5 GB). Nothing here costs money.
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATA_DIR: /app/data
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+    volumes:
+      - app-data:/app/data
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama
+    profiles: ["local"]
+    volumes:
+      - ollama-models:/root/.ollama
+    ports:
+      - "11434:11434"
+    restart: unless-stopped
+
+  ollama-pull:
+    image: ollama/ollama
+    profiles: ["local"]
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c", "sleep 5 && ollama pull qwen3:8b"]
+    restart: "no"
+
+volumes:
+  app-data:
+  ollama-models:

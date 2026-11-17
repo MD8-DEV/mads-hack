@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Revision Rounds - scope tracker for freelance web designers: research waitlist</title>
+<style>
+:root{--bg:#ffffff;--fg:#1b1b1b;--muted:#4a4a4a;--accent:#1d4ed8;--accent-fg:#ffffff;--banner:#fff2c2;--banner-fg:#3b2c00;--line:#cfcfcf}
+@media (prefers-color-scheme: dark){:root{--bg:#141414;--fg:#f1f1f1;--muted:#c9c9c9;--accent:#8db4ff;--accent-fg:#0b1a33;--banner:#3b2f00;--banner-fg:#fff2c2;--line:#3d3d3d}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.banner{background:var(--banner);color:var(--banner-fg);padding:12px 16px;border-bottom:2px solid var(--banner-fg);font-weight:700}
+main{max-width:720px;margin:0 auto;padding:24px 16px 40px}
+h1{font-size:clamp(1.6rem,5vw,2.3rem);line-height:1.2;margin:.2em 0 .4em}
+h2{font-size:1.2rem;margin:1.8em 0 .5em}
+.eyebrow{margin:0;color:var(--muted);font-weight:600}
+.lead{font-size:1.1rem;color:var(--muted)}
+.notice{border-left:4px solid var(--accent);padding:8px 12px;margin:12px 0}
+form{display:grid;gap:12px;border:1px solid var(--line);border-radius:10px;padding:16px}
+label{font-weight:600}
+input[type=email],input[type=text]{width:100%;padding:10px 12px;font:inherit;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+.consent{display:flex;gap:10px;align-items:flex-start}
+.consent label{font-weight:400}
+.consent input{width:20px;height:20px;margin-top:3px;flex:none}
+button{font:inherit;font-weight:700;padding:12px 18px;border:0;border-radius:8px;background:var(--accent);color:var(--accent-fg);cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+a{color:var(--accent)}
+dt{font-weight:600;margin-top:12px}
+dd{margin:4px 0 0}
+footer{max-width:720px;margin:0 auto;padding:0 16px 32px;color:var(--muted);font-size:.92rem}
+</style>
+</head>
+<body>
+<div class="banner" role="note">Prototype page served locally by Venture Validator. Publishing is MOCKED: nothing is posted publicly.</div>
+<main>
+<header>
+<p class="eyebrow">Revision Rounds - scope tracker for freelance web designers</p>
+<h1>Track revision rounds against contract limits in real time</h1>
+<p class="lead">For solo web designers on fixed-price projects who lose hours to client changes beyond the agreed scope.</p>
+</header>
+<section aria-labelledby="benefits-h">
+<h2 id="benefits-h">What it is meant to do</h2>
+<ul><li>Know exactly which revision round you&#x27;re on before you start the work</li><li>Send clients a clear summary that shows scope used versus remaining</li><li>Stop working for free when clients exceed the agreed rounds</li></ul>
+</section>
+<section aria-labelledby="availability-h">
+<h2 id="availability-h">Availability</h2>
+<p class="notice">Not built yet. Joining the waitlist means we may contact you for a short research conversation. There is nothing to buy on this page.</p>
+</section>
+<section aria-labelledby="join-h">
+<h2 id="join-h">Join the research waitlist</h2>
+<form id="waitlist-form" method="post" action="/p/20261117-193518-revision-rounds-scope-tracker-for-freela/waitlist">
+<label for="email">Email address (required)</label>
+<input id="email" name="email" type="email" required autocomplete="email">
+<label for="role">What&#x27;s your current process for tracking revision rounds with clients? (optional)</label>
+<input id="role" name="role" type="text" maxlength="200">
+<div class="consent"><input id="consent" name="consent" type="checkbox" value="yes" required>
+<label for="consent">I agree to be contacted by email about this research, including an invitation to a short research conversation. My email is used for nothing else and I can ask to be removed at any time.</label></div>
+<input type="hidden" id="source" name="source" value="">
+<input type="hidden" id="visitor_id" name="visitor_id" value="">
+<input type="hidden" name="page" value="landing">
+<button type="submit">Join the research waitlist</button>
+</form>
+</section>
+<section aria-labelledby="faq-h">
+<h2 id="faq-h">Questions</h2>
+<dl><dt>Can I use it today?</dt><dd>Not built yet. Joining the waitlist means we may contact you for a short research conversation. There is nothing to buy on this page.</dd><dt>What is this?</dt><dd>A research project for a tool that helps freelance designers track revision rounds against contract limits and generate client-ready summaries.</dd><dt>Who is this for?</dt><dd>Solo web and UI designers on fixed-price projects who want to stop unpaid revision work.</dd><dt>What happens after I join?</dt><dd>We may contact you for a 15-minute research conversation. No product exists yet and there is nothing to buy.</dd><dt>What data do you keep?</dt><dd>Only your email and your answer to the follow-up question. Never shared or sold.</dd><dt>Does joining cost anything?</dt><dd>No. There is nothing to buy; the waitlist is for research conversations.</dd></dl>
+</section>
+</main>
+<footer>Your email address is stored only so the founder can contact you about this research. The role question is optional.</footer>
+<script>
+(function () {
+  var EVENT_URL = "/p/20261117-193518-revision-rounds-scope-tracker-for-freela/event";
+  var params = new URLSearchParams(window.location.search);
+  var source = params.get("utm_source") || null;
+  var visitorId = null;
+  try { visitorId = window.localStorage.getItem("vv_visitor_id"); } catch (err) { visitorId = null; }
+  if (!visitorId) {
+    visitorId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID()
+      : "v" + Date.now().toString(36) + Math.random().toString(36).slice(2);
+    try { window.localStorage.setItem("vv_visitor_id", visitorId); } catch (err) { /* private mode */ }
+  }
+  var sourceField = document.getElementById("source");
+  if (sourceField && source) { sourceField.value = source; }
+  var visitorField = document.getElementById("visitor_id");
+  if (visitorField) { visitorField.value = visitorId; }
+  function send(payload) {
+    try {
+      fetch(EVENT_URL, {method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload), keepalive: true}).catch(function () {});
+    } catch (err) { /* analytics must never break the page */ }
+  }
+  send({type: "page_view", page: "landing", source: source, visitor_id: visitorId});
+})();
+</script>
+</body>
+</html>

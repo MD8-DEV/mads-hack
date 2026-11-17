@@ -1,0 +1,26 @@
+# Secrets: real keys live only in .env (see .env.example)
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# Runtime data (runs, caches, local stores); the committed demo run is exported to outputs/
+data/
+.cache/
+
+# Local tooling and organizer documents
+.claude/settings.local.json
+rules/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log

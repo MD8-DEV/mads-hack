@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Ventures - Venture Validator{% endblock %}
+{% block content %}
+<div class="grid two">
+  <section>
+    <h1>Ventures</h1>
+    {% if rows %}
+    <table>
+      <thead><tr><th>Venture</th><th>Status</th><th>Where it is</th><th>Waiting for</th></tr></thead>
+      <tbody>
+      {% for row in rows %}
+        <tr>
+          <td><a href="/runs/{{ row.run.run_id }}">{{ row.run.title }}</a><br><small class="muted">{{ row.run.run_id }}</small></td>
+          <td><span class="badge status-{{ row.run.status|lower }}">{{ row.run.status }}</span></td>
+          <td><code>{{ row.status_line }}</code></td>
+          <td>{{ row.pending or ("working" if row.run.status == "ACTIVE" else "-") }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No ventures yet. Start one with the form.</p>
+    {% endif %}
+
+    <h2>Models</h2>
+    {% if has_models %}
+      <p>Main chain: {% for m in models.main %}<code>{{ m }}</code>{% if not loop.last %} &rarr; {% endif %}{% else %}<em>none</em>{% endfor %}</p>
+      <p>Fast chain: {% for m in models.fast %}<code>{{ m }}</code>{% if not loop.last %} &rarr; {% endif %}{% else %}<em>none</em>{% endfor %}</p>
+    {% else %}
+      <div class="box warn">
+        <strong>No model is configured.</strong> Add a free key to <code>.env</code>
+        (<code>HACKCLUB_API_KEY</code>, <code>GROQ_API_KEY</code> or <code>NVIDIA_API_KEY</code>; see <code>.env.example</code>),
+        or run <code>docker compose --profile local up</code> to use a local open-weight model through Ollama.
+      </div>
+    {% endif %}
+
+    <div class="box mocked">
+      <h2>What is MOCKED</h2>
+      <ul>
+        {% for name, text in MOCKED_ITEMS %}<li><strong>{{ name }}:</strong> {{ text }}</li>{% endfor %}
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Start a venture</h2>
+    <form method="post" action="/runs" class="stack">
+      <label>Working title <input name="title" maxlength="120" placeholder="Short name for the idea"></label>
+      <label>The idea <span class="req">required</span>
+        <textarea name="idea" rows="4" required maxlength="5000" placeholder="What would you build, in plain words?"></textarea></label>
+      <label>Who it is for <textarea name="customer" rows="2" maxlength="5000" placeholder="The specific customer and their situation"></textarea></label>
+      <label>Why you <textarea name="why_you" rows="2" maxlength="5000" placeholder="Your experience, access or unfair advantage"></textarea></label>
+      <div class="grid two">
+        <label>Jurisdiction <input name="jurisdiction" maxlength="120" placeholder="Country / region"></label>
+        <label>Budget <input name="budget" maxlength="120" placeholder="e.g. 0, or 200 USD"></label>
+      </div>
+      <label>Time available <input name="time" maxlength="120" placeholder="e.g. 10 hours a week for 6 weeks"></label>
+      <label>Evidence you already have <textarea name="evidence" rows="3" maxlength="5000" placeholder="Conversations, past purchases, numbers (with where they came from)"></textarea></label>
+      <label>Values and limits <textarea name="values" rows="2" maxlength="5000" placeholder="Anything the venture must or must not do"></textarea></label>
+      <p class="muted small">Digital products only. Physical goods, financial/investment/crypto products and health or legal advice are outside what the pipeline works on.</p>
+      <button type="submit" class="primary">Start</button>
+    </form>
+  </section>
+</div>
+{% endblock %}
