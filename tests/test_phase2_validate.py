@@ -326,6 +326,7 @@ def test_founder_reported_data_waits_for_the_window_then_counts(orch, monkeypatc
     gate = orch.store.load(rid).steps["2.2"].gate
     assert gate["status"] == "NOT_EVALUABLE" and gate["outcome"] is None   # window still open: no peeking
     close_window(monkeypatch, end)
+    orch.advance(rid)   # the pipeline re-opens the data request; actions must answer a pending item
     orch.act(rid, {"kind": "submit_data", "step": "2.2", "data": data, "channel": "cli"})
     st = orch.store.load(rid).steps["2.2"]
     assert st.gate["outcome"] == "GO"

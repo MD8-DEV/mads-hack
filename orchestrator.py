@@ -42,6 +42,16 @@ _EVIDENCE_ID = re.compile(r"\bE-\d+\b")
 _LABEL_TOKENS = {"`ESTIMATE`": "`ASSUMPTION (estimate)`", "`UNKNOWN`": "`ASSUMPTION (unknown)`"}
 FINAL_DECISIONS = ("PERSEVERE", "PIVOT", "STOP")
 
+# Which founder actions can answer which pending item (anything else is refused before any side effect).
+ALLOWED_ACTIONS: dict[str, set[str]] = {
+    "decision": {"approve", "reject", "decide", "select_concept", "skip", "change_threshold", "submit_data"},
+    "submit_data": {"submit_data", "decide", "skip", "change_threshold"},
+    "lock_thresholds": {"lock_thresholds", "decide", "skip"},
+    "phase_review": {"phase_review"},
+    "clarify_brief": {"clarify_brief"},
+    "retry": {"retry"},
+}
+
 
 class FounderActionError(ValueError):
     """A founder action the rules do not allow. The message explains why."""
@@ -442,6 +452,20 @@ class Orchestrator:
             run = self.store.load(run_id)
             kind = action.get("kind")
             channel = action.get("channel", "web")
+            if run.status not in ("ACTIVE", "BLOCKED"):
+                raise FounderActionError(f"Run is {run.status}; no further actions apply.")
+            # Every founder action must answer the item the pipeline is actually waiting for.
+            pending = run.pending or {}
+            pkind = pending.get("kind")
+            if kind not in ALLOWED_ACTIONS.get(pkind or "", set()):
+                if not pkind:
+                    raise FounderActionError("Nothing is waiting for you right now: the agents are still working.")
+                raise FounderActionError(
+                    f"The pipeline is waiting for '{pkind.replace('_', ' ')}'"
+                    + (f" on step {pending.get('step')}" if pending.get("step") else "")
+                    + f"; the action '{kind}' does not answer it.")
+            if action.get("step") and pending.get("step") and str(action["step"]) != str(pending["step"]):
+                raise FounderActionError(f"Step {action['step']} is not the step waiting for you ({pending['step']}).")
             if kind == "retry":
                 run.pending = None
                 if run.status == "BLOCKED":
@@ -504,6 +528,9 @@ class Orchestrator:
     def _act_change_threshold(self, run: Run, meta, st: StepState, action: dict, channel: str) -> None:
         if not st.contract or not Contract(**st.contract).locked:
             raise FounderActionError("Thresholds are not locked yet: tune them when you lock them.")
+        if meta.auto_lock or Contract(**st.contract).locked_by == "system:tests":
+            raise FounderActionError("Test-gate thresholds are fixed by policy (100% critical tests, no open "
+                                     "critical/high bugs) and cannot be changed.")
         reason = (action.get("reason") or "").strip()
         if not reason:
             raise FounderActionError("A threshold change after locking needs a reason.")
@@ -530,6 +557,9 @@ class Orchestrator:
         contract = Contract(**st.contract) if st.contract else None
         if contract is None or not contract.locked:
             raise FounderActionError("Thresholds must be locked before data is submitted.")
+        if st.gate and st.gate.get("outcome"):
+            raise FounderActionError("This gate already has an evaluated result. Accept or override it; new data "
+                                     "for the same test would replace a result after it was seen.")
         data = dict(action.get("data") or {})
         st.submitted = data
         rubric = rubric_scorer.score_input(ctx, str(data)[:5000], kind=f"data report for step {meta.step_id}",

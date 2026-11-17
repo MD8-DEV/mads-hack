@@ -274,3 +274,36 @@ def test_unsourced_claims_render_with_the_word_assumption(tmp_path):
     assert "https://example.org/a" in sourced and "ASSUMPTION" not in sourced
     _, problems = ledger.verify_claims([{"text": "word " * 60, "label": "SOURCED", "evidence_ids": ["E-404"]}])
     assert all(p.endswith("...") and len(p.split(": ", 1)[1]) <= 160 for p in problems)
+
+
+def test_actions_must_answer_the_pending_item(orch):
+    run = orch.create_run(BRIEF)
+    rid = run.run_id
+    run = orch.advance(rid)
+    assert run.pending["kind"] == "decision" and run.pending["step"] == "1.1"
+    before = len(orch.log(rid).entries)
+    with pytest.raises(FounderActionError):
+        orch.act(rid, {"kind": "lock_thresholds", "step": "1.1"})      # does not answer a decision
+    with pytest.raises(FounderActionError):
+        orch.act(rid, {"kind": "phase_review", "match": "Yes", "confidence": 4})
+    assert len(orch.log(rid).entries) == before                        # refused actions write nothing
+
+
+def test_skip_cannot_dismiss_an_open_phase_review(orch):
+    run = orch.create_run(BRIEF)
+    rid = run.run_id
+    for _ in range(40):
+        run = orch.advance(rid)
+        p = run.pending
+        if p["kind"] == "phase_review":
+            break
+        if p["kind"] == "lock_thresholds":
+            orch.act(rid, {"kind": "lock_thresholds", "step": p["step"]})
+        elif p["kind"] == "submit_data":
+            orch.act(rid, {"kind": "decide", "step": p["step"], "outcome": "GO", "reason": "test"})
+        else:
+            orch.act(rid, {"kind": "approve", "step": p["step"]})
+    assert run.pending["kind"] == "phase_review"
+    with pytest.raises(FounderActionError):
+        orch.act(rid, {"kind": "skip", "step": "2.1", "outcome": "GO", "reason": "skip ahead"})
+    assert orch.store.load(rid).pending["kind"] == "phase_review"

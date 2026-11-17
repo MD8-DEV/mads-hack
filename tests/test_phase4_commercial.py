@@ -158,6 +158,7 @@ def test_pricing_gate_passes_with_price_inside_acceptable_range(tmp_path):
     low, high = st.observation["details"]["click_test"]["wilson_95"]
     assert low < 0.07 < high
     assert orch.ledger(rid).get(st.observation["evidence_ids"][0]).provenance == "FOUNDER_REPORTED"
+    orch.advance(rid)   # sets the pending decision; actions must answer a pending item
     orch.act(rid, {"kind": "approve", "step": "4.1"})
     assert orch.store.load(rid).current_step == "4.2"
 
