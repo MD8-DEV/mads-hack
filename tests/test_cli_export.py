@@ -283,3 +283,22 @@ def test_demo_writes_outputs_and_merged_log(orch, tmp_path):
     assert entries and not validate_entries(entries)
     assert [e["timestamp"] for e in entries] == sorted(e["timestamp"] for e in entries)
     assert all(OUTPUT_NAME.match(p.name) for p in out.iterdir() if p.name != "README.txt")
+
+
+def test_unfinished_demo_leaves_outputs_and_log_untouched(orch, tmp_path):
+    demo = tmp_path / "demo"
+    demo.mkdir()
+    (demo / "stuck.brief.yaml").write_text(yaml.safe_dump(BRIEF), encoding="utf-8")
+    # The decisions file stops answering after 1.1, so the run stays ACTIVE (unfinished).
+    (demo / "stuck.decisions.yaml").write_text(yaml.safe_dump({
+        "founder": "Test founder", "steps": {"1.1": {"decision": "approve"}}}), encoding="utf-8")
+    out = tmp_path / "outputs"
+    out.mkdir()
+    (out / "phase1_step1_committed.md").write_text("committed", encoding="utf-8")
+    log_path = tmp_path / "decision_log.json"
+    log_path.write_text("[]", encoding="utf-8")
+    results = cli.run_demo(orch, demo, out, log_path, out=lambda s: None)
+    assert [r["status"] for r in results] == ["ACTIVE"]
+    assert (out / "phase1_step1_committed.md").read_text(encoding="utf-8") == "committed"
+    assert sorted(p.name for p in out.iterdir()) == ["phase1_step1_committed.md"]
+    assert log_path.read_text(encoding="utf-8") == "[]"

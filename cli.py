@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
+import tempfile
 from collections import Counter
 from pathlib import Path
 from typing import Any, Callable
@@ -607,11 +609,10 @@ def run_demo(orch: Orchestrator, demo_dir: Path | str, out_dir: Path | str, log_
     clashes = [p or '""' for p, n in prefixes.items() if n > 1]
     if clashes:
         out(f"Warning: several demos share export_prefix {', '.join(clashes)}; later files overwrite earlier ones.")
-    if clean and out_dir.is_dir():
-        # Remove earlier exports so outputs/ only holds files from this demo run.
-        for path in out_dir.iterdir():
-            if path.is_file() and is_output_name(path.name):
-                path.unlink()
+    # Export into a staging folder first. outputs/ and the root log are replaced only when every demo run
+    # finished (COMPLETED or STOPPED), so a network outage mid-run can never wipe a committed demo.
+    staging = Path(tempfile.mkdtemp(prefix="vv-demo-"))
+    staged_out, staged_log = staging / "outputs", staging / "decision_log.json"
     results = []
     run_ids = []
     for name, brief_path, decisions_path in pairs:
@@ -621,15 +622,29 @@ def run_demo(orch: Orchestrator, demo_dir: Path | str, out_dir: Path | str, log_
         run = orch.create_run(brief, founder=decisions["founder"], title=brief.get("title"))
         out(f"Run {run.run_id} | {(run.intake or {}).get('score_line', '')}")
         result = run_script(orch, run.run_id, decisions, out=out)
-        files = export_run(orch.store, run.run_id, out_dir, prefix=decisions["export_prefix"])
-        out(f"Exported {len(files)} files to {out_dir}")
-        result.update({"name": name, "files": files})
+        files = export_run(orch.store, run.run_id, staged_out, prefix=decisions["export_prefix"])
+        out(f"Staged {len(files)} files")
+        result.update({"name": name, "files": [Path(f).name for f in files]})
         results.append(result)
         run_ids.append(run.run_id)
-    count = merge_logs(orch.store, run_ids, log_path)
-    out(f"Wrote {count} decision-log entries from {len(run_ids)} demo run(s) to {log_path}")
+    count = merge_logs(orch.store, run_ids, staged_log)
     for r in results:
         out(f"  {r['name']}: {r['status']} | last gate {r['last_gate']} | cost ${r['cost']:.4f} | {r['stopped']}")
+    if not all(r.get("status") in ("COMPLETED", "STOPPED") for r in results):
+        out(f"Not every demo run finished: {out_dir} and {log_path} were left unchanged. "
+            f"Staged export: {staging}. Resume with `cli.py script <run_id>` and export again.")
+        return results
+    if clean and out_dir.is_dir():
+        # Remove earlier exports so outputs/ only holds files from this demo run.
+        for path in out_dir.iterdir():
+            if path.is_file() and is_output_name(path.name):
+                path.unlink()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for path in staged_out.iterdir() if staged_out.exists() else []:
+        if path.is_file():
+            shutil.copy2(path, out_dir / path.name)
+    shutil.copy2(staged_log, log_path)
+    out(f"Exported to {out_dir}; wrote {count} decision-log entries from {len(run_ids)} demo run(s) to {log_path}")
     return results
 
 
