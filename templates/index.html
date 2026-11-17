@@ -1,38 +1,75 @@
 {% extends "base.html" %}
 {% block title %}Ventures - Venture Validator{% endblock %}
 {% block content %}
-<div class="grid two">
+<section class="hero">
+  <div>
+    <h1>Test an idea with evidence, <span class="accent">or stop it early.</span></h1>
+    <p class="lead">A team of open-source AI agents takes a founder's idea through six gated phases: Discover, Validate,
+      Build, Commercial setup, Launch, and Operate and learn. Thresholds are locked before any data comes in, every gate is
+      computed in code, and you approve every step.</p>
+  </div>
+  <div class="pillars">
+    <div class="pillar"><span class="icon i1" aria-hidden="true">A</span>
+      <div><strong>You stay in control</strong><span>Every deliverable, threshold and outward action waits for your approval. Overrides are logged.</span></div></div>
+    <div class="pillar"><span class="icon i2" aria-hidden="true">E</span>
+      <div><strong>Evidence over optimism</strong><span>Claims are sourced or labelled. Weak evidence gets a STOP recommendation, not spin.</span></div></div>
+    <div class="pillar"><span class="icon i3" aria-hidden="true">M</span>
+      <div><strong>Nothing real goes out</strong><span>Payments, publishing, emails and posts are MOCKED and stay on this machine.</span></div></div>
+  </div>
+</section>
+
+<div class="split">
   <section>
-    <h1>Ventures</h1>
+    <div class="panel-head"><h2>Ventures</h2>{% if rows %}<span class="muted small">{{ rows|length }} run{{ "s" if rows|length != 1 }}</span>{% endif %}</div>
     {% if rows %}
-    <table>
-      <thead><tr><th>Venture</th><th>Status</th><th>Where it is</th><th>Waiting for</th></tr></thead>
-      <tbody>
+    <div class="ventures">
       {% for row in rows %}
-        <tr>
-          <td><a href="/runs/{{ row.run.run_id }}">{{ row.run.title }}</a><br><small class="muted">{{ row.run.run_id }}</small></td>
-          <td><span class="badge status-{{ row.run.status|lower }}">{{ row.run.status }}</span></td>
-          <td><code>{{ row.status_line }}</code></td>
-          <td>{{ row.pending or ("working" if row.run.status == "ACTIVE" else "-") }}</td>
-        </tr>
+        {% set r = row.run %}{% set m = row.current_meta %}{% set ev = row.evidence %}
+        <a class="venture" href="/runs/{{ r.run_id }}">
+          <div class="top">
+            <div>
+              <div class="title">{{ r.title }}</div>
+              <div class="meta">
+                {% if r.status == "COMPLETED" and r.final_decision %}Finished all six phases
+                {% elif r.status == "STOPPED" %}Stopped at step {{ r.current_step }}{% if m %} {{ m.name }}{% endif %}
+                {% elif m %}Phase {{ m.phase }} {{ m.phase_name }} &middot; step {{ m.step_id }} {{ m.name }}{% endif %}
+                {% if row.pending %} &middot; waiting for you ({{ row.pending|replace("_", " ") }}){% elif r.status == "ACTIVE" %} &middot; agents working{% endif %}
+              </div>
+            </div>
+            <div>
+              {% if r.final_decision %}<span class="badge {{ 'v-stopped' if r.final_decision.decision == 'STOP' else ('v-passed' if r.final_decision.decision == 'PERSEVERE' else 'v-skipped') }}">{{ r.final_decision.decision }}</span>{% endif %}
+              <span class="badge status-{{ r.status|lower }}">{{ r.status }}</span>
+            </div>
+          </div>
+          <div class="segments" aria-label="Step progress">
+            {% for s in row.segments %}<span class="seg v-{{ s.verdict.key }}" title="{{ s.id }} {{ s.name }}: {{ s.verdict.label }}"></span>{% endfor %}
+          </div>
+          <div class="foot">
+            <span>Evidence gates: <strong>{{ ev.passed }}</strong> passed &middot; <strong>{{ ev.failed }}</strong> failed &middot; <strong>{{ ev.not_evaluated }}</strong> not evaluated</span>
+            {% if ev.overrides %}<span>{{ ev.overrides }} founder override{{ "s" if ev.overrides != 1 }}</span>{% endif %}
+            <span class="faint">{{ r.created_at[:16]|replace("T", " ") }} UTC</span>
+          </div>
+        </a>
       {% endfor %}
-      </tbody>
-    </table>
+    </div>
     {% else %}
-    <p class="muted">No ventures yet. Start one with the form.</p>
+      <div class="empty">No ventures yet. Describe an idea in the form to start the first one.</div>
     {% endif %}
 
-    <h2>Models</h2>
-    {% if has_models %}
-      <p>Main chain: {% for m in models.main %}<code>{{ m }}</code>{% if not loop.last %} &rarr; {% endif %}{% else %}<em>none</em>{% endfor %}</p>
-      <p>Fast chain: {% for m in models.fast %}<code>{{ m }}</code>{% if not loop.last %} &rarr; {% endif %}{% else %}<em>none</em>{% endfor %}</p>
-    {% else %}
-      <div class="box warn">
-        <strong>No model is configured.</strong> Add a free key to <code>.env</code>
-        (<code>HACKCLUB_API_KEY</code>, <code>GROQ_API_KEY</code> or <code>NVIDIA_API_KEY</code>; see <code>.env.example</code>),
-        or run <code>docker compose --profile local up</code> to use a local open-weight model through Ollama.
-      </div>
-    {% endif %}
+    <div class="panel" style="margin-top:20px">
+      <h2>Models</h2>
+      {% if has_models %}
+        <p class="small muted">Open-weight models on free tiers, tried in order until one answers.</p>
+        <p class="small"><strong>Main:</strong> {% for m in models.main %}<code>{{ m }}</code>{% if not loop.last %} &rarr; {% endif %}{% else %}<em>none</em>{% endfor %}</p>
+        <p class="small"><strong>Fast:</strong> {% for m in models.fast %}<code>{{ m }}</code>{% if not loop.last %} &rarr; {% endif %}{% else %}<em>none</em>{% endfor %}</p>
+      {% else %}
+        <div class="box warn">
+          <strong>No model is configured.</strong> Add a free key to <code>.env</code>
+          (<code>HACKCLUB_API_KEY</code>, <code>GROQ_API_KEY</code> or <code>NVIDIA_API_KEY</code>; see <code>.env.example</code>),
+          or run <code>docker compose --profile local up</code> to use a local open-weight model through Ollama.
+        </div>
+      {% endif %}
+    </div>
 
     <div class="box mocked">
       <h2>What is MOCKED</h2>
@@ -42,23 +79,26 @@
     </div>
   </section>
 
-  <section>
+  <section class="panel">
     <h2>Start a venture</h2>
     <form method="post" action="/runs" class="stack">
+      <div class="form-section">The idea</div>
       <label>Working title <input name="title" maxlength="120" placeholder="Short name for the idea"></label>
       <label>The idea <span class="req">required</span>
         <textarea name="idea" rows="4" required maxlength="5000" placeholder="What would you build, in plain words?"></textarea></label>
       <label>Who it is for <textarea name="customer" rows="2" maxlength="5000" placeholder="The specific customer and their situation"></textarea></label>
       <label>Why you <textarea name="why_you" rows="2" maxlength="5000" placeholder="Your experience, access or unfair advantage"></textarea></label>
+      <div class="form-section">Constraints</div>
       <div class="grid two">
         <label>Jurisdiction <input name="jurisdiction" maxlength="120" placeholder="Country / region"></label>
         <label>Budget <input name="budget" maxlength="120" placeholder="e.g. 0, or 200 USD"></label>
       </div>
       <label>Time available <input name="time" maxlength="120" placeholder="e.g. 10 hours a week for 6 weeks"></label>
+      <div class="form-section">What you know</div>
       <label>Evidence you already have <textarea name="evidence" rows="3" maxlength="5000" placeholder="Conversations, past purchases, numbers (with where they came from)"></textarea></label>
       <label>Values and limits <textarea name="values" rows="2" maxlength="5000" placeholder="Anything the venture must or must not do"></textarea></label>
       <p class="muted small">Digital products only. Physical goods, financial/investment/crypto products and health or legal advice are outside what the pipeline works on.</p>
-      <button type="submit" class="primary">Start</button>
+      <button type="submit" class="primary">Start the pipeline</button>
     </form>
   </section>
 </div>

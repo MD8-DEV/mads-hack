@@ -3,22 +3,27 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   {% if refresh %}<meta http-equiv="refresh" content="3">{% endif %}
   <title>{% block title %}Venture Validator{% endblock %}</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=2">
 </head>
 <body>
+  {% set path = request.url.path if request else "" %}
   <header class="topbar">
-    <a class="brand" href="/">Venture Validator</a>
-    <nav>
-      <a href="/">Ventures</a>
+    <a class="brand" href="/"><span class="mark" aria-hidden="true">VV</span>Venture Validator</a>
+    <nav aria-label="Main">
+      <a href="/" class="{{ 'active' if path == '/' }}">Ventures</a>
       {% if run %}
-        <a href="/runs/{{ run.run_id }}">Run</a>
-        <a href="/runs/{{ run.run_id }}/log">Decision log</a>
-        <a href="/runs/{{ run.run_id }}/evidence">Evidence</a>
-        <a href="/runs/{{ run.run_id }}/outbox">Outbox and site</a>
+        {% set base = "/runs/" ~ run.run_id %}
+        <a href="{{ base }}" class="{{ 'active' if path == base or path.startswith(base ~ '/steps') }}">Run</a>
+        <a href="{{ base }}/log" class="{{ 'active' if path == base ~ '/log' }}">Decision log</a>
+        <a href="{{ base }}/evidence" class="{{ 'active' if path == base ~ '/evidence' }}">Evidence</a>
+        <a href="{{ base }}/outbox" class="{{ 'active' if path == base ~ '/outbox' }}">Outbox and site</a>
       {% endif %}
     </nav>
+    <span class="spacer"></span>
+    <span class="mock-pill" title="No payment provider, no real publishing or sending">Payments, publishing and sending: MOCKED</span>
   </header>
   <main class="container">
     {% if error %}<div class="box error" role="alert"><strong>Not done:</strong> {{ error }}</div>{% endif %}

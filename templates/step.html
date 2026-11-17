@@ -1,36 +1,70 @@
 {% extends "base.html" %}
 {% block title %}Step {{ meta.step_id }} - {{ run.title }}{% endblock %}
 {% block content %}
+{% set gate = st.gate or {} %}
+{% set dec = st.decision or {} %}
 <section class="runhead">
-  <p><a href="/runs/{{ run.run_id }}">&larr; {{ run.title }}</a></p>
-  <h1>Step {{ meta.step_id }} {{ meta.name }}</h1>
-  <p><code class="statusline">{{ status_line }}</code></p>
-  <p>Phase {{ meta.phase }} {{ meta.phase_name }} &middot; Gate {{ meta.gate_types|join(" + ") }} &middot;
-     Status <span class="badge">{{ st.status }}</span>
-     {% if st.outcome %}&middot; Outcome <span class="badge outcome-{{ st.outcome|lower }}">{{ st.outcome }}</span>{% endif %}
-     {% if st.overridden %}<span class="badge override">overridden</span>{% endif %}
-     &middot; Attempt {{ st.attempt }} &middot; Repeats {{ st.repeat_count }}/2</p>
-  {% if st.summary %}<p>{{ st.summary }}</p>{% endif %}
+  <p class="crumbs"><a href="/runs/{{ run.run_id }}">&larr; {{ run.title }}</a></p>
+  <div class="panel-head">
+    <h1>Step {{ meta.step_id }} {{ meta.name }}</h1>
+    <span class="badge v-{{ verdict.key }}">{{ verdict.label }}</span>
+  </div>
+  <p class="kv"><span>Phase {{ meta.phase }} {{ meta.phase_name }}</span>
+    <span>Gate {{ meta.gate_types|join(" + ") }}</span>
+    <span>Attempt {{ st.attempt }}</span><span>Repeats {{ st.repeat_count }}/2</span>
+    <span class="faint">Run status: <code class="statusline">{{ status_line }}</code></span></p>
+  {% if st.summary %}<p class="lead">{{ st.summary }}</p>{% endif %}
+</section>
+
+<section class="panel">
+  <h2>Gate and decision</h2>
+  <div class="facts">
+    <div class="fact"><div class="k">Gate result</div>
+      <div class="v">{{ gate.status or ("not evaluated" if meta.has_evidence_gate else "approval only") }}
+        {% if gate.pct_of_target is not none and gate.status in ("FAILED", "PARTIAL") %}({{ (gate.pct_of_target * 100)|round|int }}% of target){% endif %}</div></div>
+    <div class="fact"><div class="k">System recommendation</div>
+      <div class="v">{% if gate.outcome %}<span class="badge outcome-{{ gate.outcome|lower }}">{{ gate.outcome }}</span>{% if gate.outcome == "PIVOT_BACK" and gate.pivot_target %} &rarr; {{ gate.pivot_target }}{% endif %}{% else %}none{% endif %}</div></div>
+    <div class="fact"><div class="k">Founder decision</div>
+      <div class="v">{% if dec.chosen %}{{ dec.chosen }}{% if dec.override %} <span class="badge override">override</span>{% endif %}{% else %}pending{% endif %}</div></div>
+    <div class="fact"><div class="k">Evidence gate passed</div>
+      <div class="v">{% if not meta.has_evidence_gate %}n/a (approval gate){% elif gate.evidence_passed %}yes{% else %}no{% endif %}</div></div>
+  </div>
+  {% if dec.reason %}<p class="small" style="margin:12px 0 0"><strong>Founder's reason:</strong> {{ dec.reason }}</p>{% endif %}
+  {% if verdict.detail %}<p class="small muted" style="margin:6px 0 0">{{ verdict.detail }}</p>{% endif %}
 </section>
 
 {% if st.contract %}
 <section class="panel">
-  <h2>Thresholds (v{{ st.contract.version }}, {{ st.contract.status }}{% if st.contract.locked_by %}, locked by {{ st.contract.locked_by }} on {{ (st.contract.locked_at or "")[:10] }}{% endif %})</h2>
+  <div class="panel-head"><h2>Locked thresholds</h2>
+    <span class="small muted">v{{ st.contract.version }} &middot; {{ st.contract.status }}{% if st.contract.locked_by %} by {{ st.contract.locked_by }} on {{ (st.contract.locked_at or "")[:10] }}{% endif %}{% if st.contract.window_days %} &middot; window {{ st.contract.window_days }} days{% endif %}</span></div>
+  <div class="scroll">
   <table>
-    <thead><tr><th>Criterion</th><th>Kind</th><th>Rule</th><th>Target</th></tr></thead>
-    <tbody>{% for c in st.contract.criteria %}<tr><td>{{ c.label }} <small class="muted">{{ c.key }}</small></td><td>{{ c.kind }}</td><td>{{ c.op }}</td><td>{{ c.target }} {{ c.unit }}</td></tr>{% endfor %}</tbody>
+    <thead><tr><th>Criterion</th><th>Kind</th><th>Rule</th><th class="num">Target</th>{% if gate.criteria %}<th class="num">Actual</th><th>Result</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for c in st.contract.criteria %}
+      {% set res = (gate.criteria or [])|selectattr("key", "equalto", c.key)|first %}
+      <tr><td>{{ c.label }}<br><small class="muted">{{ c.key }}</small></td><td>{{ c.kind }}</td><td>{{ c.op }}</td>
+        <td class="num">{{ c.target|num }} {{ c.unit }}</td>
+        {% if gate.criteria %}
+          <td class="num">{{ res.actual|num if res else "n/a" }}</td>
+          <td>{% if res and res.passed is true %}<span class="badge v-passed">pass</span>{% elif res and res.passed is false %}<span class="badge v-stopped">fail</span>{% else %}<span class="badge">not adjudicated</span>{% endif %}</td>
+        {% endif %}</tr>
+    {% endfor %}
+    </tbody>
   </table>
-  {% if st.contract_history|length > 1 %}<p class="small muted">{{ st.contract_history|length }} threshold versions recorded (changes after locking invalidate the test).</p>{% endif %}
+  </div>
+  {% if st.contract_history|length > 1 %}<p class="small muted">{{ st.contract_history|length }} threshold versions recorded. A change after locking invalidates the test.</p>{% endif %}
 </section>
 {% endif %}
 
 <section class="panel">
   <h2>Artifacts of the latest attempt</h2>
   {% for a in artifacts %}
-    <details {% if a.name in ("gate_report.md", "deliverable.md") %}open{% endif %}>
-      <summary><strong>{{ a.name }}</strong> &middot; <a href="{{ a.raw_url }}" target="_blank" rel="noopener">raw</a></summary>
+    <details class="card" {% if loop.index <= 2 and a.name in ("gate_report.md", "deliverable.md") %}open{% endif %}>
+      <summary>{{ {"gate_report.md": "Gate report", "deliverable.md": "Deliverable"}.get(a.name, a.name) }}
+        <a class="small" href="{{ a.raw_url }}" target="_blank" rel="noopener">raw</a></summary>
       {% if a.kind == "markdown" %}
-        <div class="md">{{ a.text|markdown }}</div>
+        <div class="md {{ 'gate' if a.name == 'gate_report.md' }}">{{ a.text|markdown }}</div>
       {% elif a.kind == "html" %}
         <p class="small muted">Shown in a sandboxed frame (scripts disabled).</p>
         <iframe class="preview" sandbox="" srcdoc="{{ a.text }}" title="{{ a.name }}"></iframe>
@@ -43,36 +77,41 @@
   {% endfor %}
 </section>
 
+<div class="grid two">
 <section class="panel">
   <h2>Gate history</h2>
   {% if st.gate_history %}
+  <div class="scroll">
   <table>
-    <thead><tr><th>Attempt</th><th>Evaluated (UTC)</th><th>Status</th><th>% of target</th><th>Outcome</th><th>Criteria</th></tr></thead>
+    <thead><tr><th>Attempt</th><th>Status</th><th class="num">% of target</th><th>Outcome</th></tr></thead>
     <tbody>
     {% for g in st.gate_history %}
-      <tr>
-        <td>{{ g.attempt }}</td><td>{{ g.evaluated_at }}</td><td>{{ g.status }}</td>
-        <td>{{ "n/a" if g.pct_of_target is none else ((g.pct_of_target * 100)|round|int ~ "%") }}</td>
+      <tr title="{% for c in g.criteria or [] %}{{ c.key }}: {{ 'n/a' if c.actual is none else c.actual }} / {{ c.target }}; {% endfor %}">
+        <td>{{ g.attempt }}<br><small class="muted">{{ (g.evaluated_at or "")[:16]|replace("T", " ") }}</small></td><td>{{ g.status }}</td>
+        <td class="num">{{ "n/a" if g.pct_of_target is none else ((g.pct_of_target * 100)|round|int ~ "%") }}</td>
         <td>{{ g.outcome or "none" }}{% if g.outcome == "PIVOT_BACK" and g.pivot_target %} &rarr; {{ g.pivot_target }}{% endif %}</td>
-        <td class="small">{% for c in g.criteria or [] %}{{ c.key }}: {{ "n/a" if c.actual is none else c.actual }} / {{ c.target }}{% if c.passed is true %} pass{% elif c.passed is false %} fail{% endif %}{% if not loop.last %}; {% endif %}{% endfor %}</td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
-  {% else %}<p class="muted">No gate evaluated yet.</p>{% endif %}
+  </div>
+  {% else %}<p class="muted small">No gate evaluated yet.</p>{% endif %}
 </section>
 
 <section class="panel">
   <h2>Attempt history</h2>
   {% for h in history %}
-    <p><strong>{{ h.attempt }}</strong>:
+    <p class="small"><strong>{{ h.attempt }}</strong>:
       {% for f in h.files %}<a href="/runs/{{ run.run_id }}/files/{{ f }}" target="_blank" rel="noopener">{{ f.split("/")[3:]|join("/") }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>
-  {% else %}<p class="muted">No attempts yet.</p>{% endfor %}
+  {% else %}<p class="muted small">No attempts yet.</p>{% endfor %}
   {% if st.history %}
+    <details><summary>Events</summary>
     <table>
       <thead><tr><th>When (UTC)</th><th>Event</th><th>Attempt</th><th>Detail</th></tr></thead>
-      <tbody>{% for e in st.history %}<tr><td>{{ e.at }}</td><td>{{ e.event }}</td><td>{{ e.attempt }}</td><td class="small">{{ e.reason or e.title or "" }}</td></tr>{% endfor %}</tbody>
+      <tbody>{% for e in st.history %}<tr><td class="small">{{ (e.at or "")[:16]|replace("T", " ") }}</td><td>{{ e.event }}</td><td>{{ e.attempt }}</td><td class="small">{{ e.reason or e.title or "" }}</td></tr>{% endfor %}</tbody>
     </table>
+    </details>
   {% endif %}
 </section>
+</div>
 {% endblock %}

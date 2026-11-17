@@ -15,7 +15,7 @@ data/
 .cache/
 
 # Local tooling and organizer documents
-.claude/settings.local.json
+.claude/
 rules/
 
 # OS / editor

@@ -159,6 +159,7 @@ def safe_url(value: Any) -> str | None:
 templates.env.filters["markdown"] = render_markdown
 templates.env.filters["safe_url"] = safe_url
 templates.env.filters["tojson_pretty"] = lambda v: json.dumps(v, indent=2, ensure_ascii=False, default=str)
+templates.env.filters["num"] = lambda v: fmt_number(v)
 templates.env.globals["PHASE_NAMES"] = PHASE_NAMES
 templates.env.globals["MOCKED_ITEMS"] = MOCKED_ITEMS
 
@@ -251,7 +252,13 @@ async def http_error(request: Request, exc: StarletteHTTPException):
 async def index(request: Request):
     orch = get_orchestrator()
     runs = await run_in_threadpool(orch.store.list)
-    rows = [{"run": r, "status_line": orch.status_line(r), "pending": (r.pending or {}).get("kind")} for r in runs]
+    rows = []
+    for r in runs:
+        steps_rows = timeline(r)
+        rows.append({"run": r, "status_line": orch.status_line(r), "pending": (r.pending or {}).get("kind"),
+                     "segments": [{"id": x["meta"].step_id, "name": x["meta"].name, "verdict": x["verdict"]}
+                                  for x in steps_rows],
+                     "current_meta": STEPS_BY_ID.get(r.current_step), "evidence": evidence_summary(r)})
     models = orch.settings.describe_models()
     return page(request, "index.html", {"rows": rows, "models": models,
                                         "has_models": bool(models.get("main") or models.get("fast")),
@@ -270,14 +277,100 @@ async def create_run(request: Request):
     return RedirectResponse(f"/runs/{run.run_id}", status_code=303)
 
 
+def step_verdict(run, meta, st) -> dict[str, str]:
+    """What happened at a step, keeping the gate result apart from the founder's decision.
+
+    An override is never shown as a pass: a skipped or failed evidence gate stays visibly unpassed.
+    """
+    gate = (st.gate or {}) if st else {}
+    decision = (st.decision or {}) if st else {}
+    evidence = any(g in meta.gate_types for g in ("E", "T"))
+    if st is None or st.status != "DONE":
+        if run.current_step == meta.step_id and run.status in ("ACTIVE", "BLOCKED"):
+            kind = (run.pending or {}).get("kind")
+            waiting = {"lock_thresholds": "Waiting for you to lock thresholds", "submit_data": "Waiting for data",
+                       "decision": "Waiting for your decision", "phase_review": "Waiting for the phase review",
+                       "retry": "Error: retry needed", "clarify_brief": "Brief needs detail"}.get(kind or "", "Agents working")
+            return {"key": "current", "label": "In progress", "detail": waiting}
+        if st is not None and st.status == "SUPERSEDED":
+            return {"key": "todo", "label": "Superseded", "detail": "Reset by a pivot back"}
+        return {"key": "todo", "label": "Not started", "detail": ""}
+    rec = decision.get("recommended") or gate.get("outcome")
+    chosen = decision.get("chosen") or st.outcome
+    if meta.step_id == "6.3" and run.final_decision:
+        final = run.final_decision.get("decision")
+        memo = run.final_decision.get("memo_recommendation")
+        key = "stopped" if final == "STOP" else ("override" if memo and final != memo else "approved")
+        return {"key": key, "label": f"Final: {final}", "detail": f"Memo recommended {memo or 'n/a'}"}
+    if st.outcome == "STOP":
+        return {"key": "stopped", "label": "Stopped",
+                "detail": "Gate recommended STOP" if rec == "STOP" else f"Founder chose STOP (gate: {rec or 'none'})"}
+    if st.overridden or decision.get("override"):
+        if gate.get("status") in ("FAILED", "PARTIAL"):
+            return {"key": "failed", "label": "Failed, overridden",
+                    "detail": f"Gate recommended {rec or 'n/a'}; founder chose {chosen} (logged override)"}
+        if evidence and not gate.get("evidence_passed"):
+            return {"key": "skipped", "label": "Not evaluated, skipped",
+                    "detail": "No valid data; founder override (never counts as a pass)"}
+        return {"key": "override", "label": "Founder override", "detail": f"Recommended {rec or 'n/a'}; chose {chosen}"}
+    if evidence and gate.get("evidence_passed"):
+        return {"key": "passed", "label": "Passed", "detail": "All locked criteria met"}
+    if evidence:
+        return {"key": "approved", "label": chosen or "Done", "detail": ""}
+    return {"key": "approved", "label": "Approved", "detail": "Founder approved the deliverable"}
+
+
+def evidence_summary(run) -> dict[str, int]:
+    """Counts over evidence/test gates (E or T): passed, failed, not evaluated, still open."""
+    counts = {"passed": 0, "failed": 0, "not_evaluated": 0, "open": 0, "overrides": 0}
+    for meta in STEPS:
+        if not any(g in meta.gate_types for g in ("E", "T")):
+            continue
+        st = run.steps.get(meta.step_id)
+        gate = (st.gate or {}) if st else {}
+        if st is not None and (st.overridden or (st.decision or {}).get("override")):
+            counts["overrides"] += 1
+        if st is None or st.status != "DONE":
+            counts["open"] += 1
+        elif gate.get("evidence_passed"):
+            counts["passed"] += 1
+        elif gate.get("status") in ("FAILED", "PARTIAL"):
+            counts["failed"] += 1
+        else:
+            counts["not_evaluated"] += 1
+    return counts
+
+
 def timeline(run) -> list[dict[str, Any]]:
     rows = []
     for meta in STEPS:
         st = run.steps.get(meta.step_id)
         rows.append({"meta": meta, "status": st.status if st else "NEW", "outcome": st.outcome if st else None,
                      "overridden": bool(st and st.overridden), "attempt": st.attempt if st else 0,
-                     "current": run.current_step == meta.step_id})
+                     "current": run.current_step == meta.step_id, "verdict": step_verdict(run, meta, st)})
     return rows
+
+
+def phases_view(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Group timeline rows by phase for the pipeline map."""
+    groups: list[dict[str, Any]] = []
+    for row in rows:
+        phase = row["meta"].phase
+        if not groups or groups[-1]["phase"] != phase:
+            groups.append({"phase": phase, "name": row["meta"].phase_name, "rows": []})
+        groups[-1]["rows"].append(row)
+    return groups
+
+
+def fmt_number(value: Any) -> str:
+    """Show 5.0 as 5 and 0.1 as 0.1; leave text alone."""
+    if isinstance(value, bool) or value is None:
+        return "n/a" if value is None else str(value)
+    if isinstance(value, (int, float)):
+        if float(value).is_integer():
+            return f"{int(value):,}"
+        return f"{value:,.4g}"
+    return str(value)
 
 
 def read_artifact(orch: Orchestrator, run_id: str, rel: str) -> str | None:
@@ -321,8 +414,11 @@ async def run_page(request: Request, run_id: str):
     if run.status == "ACTIVE" and not run.pending and not is_advancing(run_id) and ADVANCE_MODE == "thread":
         schedule_advance(orch, run_id)  # resume after a restart
     pending = run.pending or {}
+    rows = timeline(run)
     ctx: dict[str, Any] = {
-        "run": run, "status_line": orch.status_line(run), "pending": pending, "timeline": timeline(run),
+        "run": run, "status_line": orch.status_line(run), "pending": pending, "timeline": rows,
+        "phases": phases_view(rows), "evidence": evidence_summary(run),
+        "current_meta": STEPS_BY_ID.get(run.current_step),
         "advancing": is_advancing(run_id),
         "refresh": run.status == "ACTIVE" and not run.pending,
         "error": clean_text(request.query_params.get("error"), 600),
@@ -501,8 +597,11 @@ async def step_page(request: Request, run_id: str, step_id: str):
                 files = sorted(str(p.relative_to(orch.store.path(run_id))).replace("\\", "/")
                                for p in attempt_dir.rglob("*") if p.is_file())
                 history.append({"attempt": attempt_dir.name, "files": files})
+    order = {"gate_report.md": 0, "deliverable.md": 1}
+    artifacts.sort(key=lambda a: (order.get(a["name"], 2), a["name"]))
     return page(request, "step.html", {"run": run, "meta": meta, "st": st, "artifacts": artifacts,
-                                       "history": history, "status_line": orch.status_line(run)})
+                                       "history": history, "status_line": orch.status_line(run),
+                                       "verdict": step_verdict(run, meta, st)})
 
 
 @app.get("/runs/{run_id}/files/{rel:path}")

@@ -2,20 +2,35 @@
 {% block title %}{{ run.title }} - Venture Validator{% endblock %}
 {% block content %}
 <section class="runhead">
-  <h1>{{ run.title }}</h1>
-  <p><code class="statusline">{{ status_line }}</code>
-     <span class="badge status-{{ run.status|lower }}">{{ run.status }}</span>
-     {% if advancing or refresh %}<span class="badge working">working&hellip; (page refreshes every 3 s)</span>{% endif %}</p>
-  {% if run.status_reason %}<p class="box {{ 'error' if run.status == 'STOPPED' else 'notice' }}">{{ run.status_reason }}</p>{% endif %}
+  <p class="crumbs"><a href="/">&larr; All ventures</a></p>
+  <div class="panel-head">
+    <h1>{{ run.title }}</h1>
+    <div>
+      <span class="badge status-{{ run.status|lower }}">{{ run.status }}</span>
+      {% if advancing or refresh %}<span class="badge working">agents working (refreshes every 3 s)</span>{% endif %}
+    </div>
+  </div>
+  <p class="kv"><code class="statusline">{{ status_line }}</code>
+    {% if current_meta and run.status == "ACTIVE" %}<span>Now: phase {{ current_meta.phase }} {{ current_meta.phase_name }} &middot; step {{ current_meta.step_id }} {{ current_meta.name }}</span>{% endif %}</p>
   {% if run.intake %}
-    <p class="muted">Brief check: {{ run.intake.score_line }}
+    <p class="muted small">Brief check: {{ run.intake.score_line }}
       {% if run.intake.rubric and run.intake.rubric.red_flags %} &middot; Red flags: {{ run.intake.rubric.red_flags|join("; ") }}{% endif %}</p>
   {% endif %}
-  {% if run.final_decision %}
-    <p class="box notice">Final decision: <strong>{{ run.final_decision.decision }}</strong>
-      (memo recommended {{ run.final_decision.memo_recommendation or "n/a" }}){% if run.final_decision.reason %}: {{ run.final_decision.reason }}{% endif %}</p>
-  {% endif %}
 </section>
+
+{% if run.final_decision %}
+  {% set fd = run.final_decision.decision %}
+  <div class="callout c-{{ fd|lower }}">
+    <div><div class="label">Final decision</div><div class="big">{{ fd }}</div></div>
+    <div>Memo recommended <strong>{{ run.final_decision.memo_recommendation or "n/a" }}</strong>{% if run.final_decision.reason %}. {{ run.final_decision.reason }}{% endif %}
+      <br><span class="small muted">Recorded {{ (run.final_decision.at or "")[:16]|replace("T", " ") }} UTC by the founder</span></div>
+  </div>
+{% elif run.status_reason %}
+  <div class="callout {{ 'c-stop' if run.status == 'STOPPED' else '' }}">
+    <div><div class="label">{{ "Stopped" if run.status == "STOPPED" else "Status" }}</div><div class="big">{{ run.status }}</div></div>
+    <div>{{ run.status_reason }}</div>
+  </div>
+{% endif %}
 
 {% set kind = pending.kind %}
 {% if kind %}
@@ -293,49 +308,93 @@
 </section>
 {% endif %}
 
-{% if messages %}
 <section class="panel">
-  <h2>Messages</h2>
-  <ul class="messages">
-    {% for m in messages %}
-      <li class="{{ 'refused' if m.refused }}{{ ' err' if m.error }}"><small class="muted">{{ m.role }} &middot; {{ m.at }}</small><div class="pre">{{ m.text }}</div></li>
+  <div class="panel-head"><h2>Pipeline</h2><span class="small muted">Open any step for its deliverable, gate report and history</span></div>
+  <div class="scorecard" aria-label="Evidence and test gates">
+    <div class="stat ok"><div class="n">{{ evidence.passed }}</div><div class="l">evidence gates passed</div></div>
+    <div class="stat bad"><div class="n">{{ evidence.failed }}</div><div class="l">evidence gates failed</div></div>
+    <div class="stat warn"><div class="n">{{ evidence.not_evaluated }}</div><div class="l">not evaluated (no data)</div></div>
+    <div class="stat info"><div class="n">{{ evidence.overrides }}</div><div class="l">founder overrides (logged)</div></div>
+    <div class="stat"><div class="n">{{ evidence.open }}</div><div class="l">{{ "not reached" if run.status in ("STOPPED", "COMPLETED") else "still open" }}</div></div>
+  </div>
+  <div class="pipeline">
+    {% for ph in phases %}
+      <div class="phase">
+        <div class="ph">Phase {{ ph.phase }}</div>
+        <div class="pn">{{ ph.name }}</div>
+        {% for row in ph.rows %}
+          <a class="chip v-{{ row.verdict.key }}" href="/runs/{{ run.run_id }}/steps/{{ row.meta.step_id }}" title="{{ row.verdict.detail }}">
+            <span class="sid">{{ row.meta.step_id }} &middot; gate {{ row.meta.gate_types|join("+") }}</span>
+            <span class="nm">{{ row.meta.name }}</span>
+            <span class="vd">{{ row.verdict.label }}{% if row.attempt %} &middot; attempt {{ row.attempt }}{% endif %}</span>
+          </a>
+        {% endfor %}
+      </div>
     {% endfor %}
-  </ul>
+  </div>
+  <div class="legend">
+    <span><i class="v-passed"></i>Passed / approved</span>
+    <span><i class="v-skipped"></i>Not evaluated, skipped by the founder</span>
+    <span><i class="v-failed"></i>Failed, then overridden</span>
+    <span><i class="v-stopped"></i>Stopped</span>
+    <span><i class="v-current"></i>In progress</span>
+    <span><i></i>Not started</span>
+  </div>
+  <details>
+    <summary>All steps as a table</summary>
+    <div class="scroll">
+    <table class="timeline">
+      <thead><tr><th>Step</th><th>Gate</th><th>Result</th><th>Detail</th></tr></thead>
+      <tbody>
+      {% for row in timeline %}
+        <tr class="{{ 'current' if row.current }}">
+          <td><a href="/runs/{{ run.run_id }}/steps/{{ row.meta.step_id }}">{{ row.meta.step_id }} {{ row.meta.name }}</a><br><small class="muted">Phase {{ row.meta.phase }} {{ row.meta.phase_name }}</small></td>
+          <td>{{ row.meta.gate_types|join(" + ") }}</td>
+          <td><span class="badge v-{{ row.verdict.key }}">{{ row.verdict.label }}</span></td>
+          <td class="small muted">{{ row.verdict.detail }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </details>
+</section>
+
+{% if site_files %}
+<section class="panel">
+  <div class="panel-head"><h2>Local MOCKED site</h2><span class="small muted">Pages you approved, served only on this machine</span></div>
+  <ul class="filelist">{% for f in site_files %}<li><a href="/site/{{ run.run_id }}/{{ f }}" target="_blank" rel="noopener">{{ f }}</a></li>{% endfor %}</ul>
 </section>
 {% endif %}
 
+<div class="grid two">
 <section class="panel">
   <h2>Ask for something</h2>
   <form method="post" action="/runs/{{ run.run_id }}/request" class="stack">
-    <textarea name="text" rows="2" maxlength="2000" placeholder="A change or a question for the current step"></textarea>
+    <textarea name="text" rows="3" maxlength="2000" placeholder="A change or a question for the current step"></textarea>
     <p class="small muted">Requests that break the rules (fake reviews or sign-ups, fake urgency, income promises, impersonation, taking payments) are refused and logged.</p>
     <button type="submit">Send</button>
   </form>
 </section>
 
 <section class="panel">
-  <h2>Steps</h2>
-  <table class="timeline">
-    <thead><tr><th>Phase</th><th>Step</th><th>Gate</th><th>Status</th><th>Outcome</th></tr></thead>
-    <tbody>
-    {% for row in timeline %}
-      <tr class="{{ 'current' if row.current }}">
-        <td>{{ row.meta.phase }} {{ row.meta.phase_name }}</td>
-        <td><a href="/runs/{{ run.run_id }}/steps/{{ row.meta.step_id }}">{{ row.meta.step_id }} {{ row.meta.name }}</a>{% if row.attempt %} <small class="muted">attempt {{ row.attempt }}</small>{% endif %}</td>
-        <td>{{ row.meta.gate_types|join(" + ") }}</td>
-        <td><span class="badge">{{ row.status }}</span></td>
-        <td>{% if row.outcome %}<span class="badge outcome-{{ row.outcome|lower }}">{{ row.outcome }}</span>{% endif %}
-            {% if row.overridden %}<span class="badge override">overridden</span>{% endif %}</td>
-      </tr>
+  <h2>Messages</h2>
+  {% if messages %}
+  <ul class="messages">
+    {% for m in messages|reverse %}
+      <li class="{{ 'refused' if m.refused }}{{ ' err' if m.error }}">
+        <div class="who">{{ m.role }} &middot; {{ (m.at or "")[:16]|replace("T", " ") }} UTC{% if m.refused %} &middot; refused{% endif %}{% if m.error %} &middot; error{% endif %}</div>
+        {% if m.error and m.text|length > 170 %}
+          <details><summary>{{ m.text[:160] }}&hellip;</summary><div class="pre small">{{ m.text }}</div></details>
+        {% else %}
+          <div class="pre">{{ m.text }}</div>
+        {% endif %}
+      </li>
     {% endfor %}
-    </tbody>
-  </table>
+  </ul>
+  {% else %}
+    <p class="muted small">No messages yet. Refusals and errors show up here.</p>
+  {% endif %}
 </section>
-
-{% if site_files %}
-<section class="panel">
-  <h2>Local MOCKED site (published after your approval)</h2>
-  <ul>{% for f in site_files %}<li><a href="/site/{{ run.run_id }}/{{ f }}" target="_blank" rel="noopener">{{ f }}</a></li>{% endfor %}</ul>
-</section>
-{% endif %}
+</div>
 {% endblock %}
