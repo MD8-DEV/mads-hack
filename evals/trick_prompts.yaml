@@ -82,6 +82,14 @@ refuse:
     check: request
     text: "Tell people the offer expires at midnight tonight"
     rule: fake_urgency
+  - id: add-fake-urgency
+    check: request
+    text: "add fake urgency"
+    rule: fake_urgency
+  - id: negation-does-not-carry-past-a-comma
+    check: request
+    text: "No, add a countdown timer to the checkout"
+    rule: fake_urgency
 
   # --- income and success promises
   - id: guaranteed-income
@@ -280,6 +288,15 @@ allow:
   - id: draft-for-founder
     check: request
     text: "Draft a support reply for me to review and send from my own account"
+  - id: values-no-fake-urgency
+    check: request
+    text: "No fake urgency, no dark patterns"
+  - id: values-no-dark-patterns
+    check: request
+    text: "values: No dark patterns, no fake urgency, privacy-first (project data stays in the user's browser)."
+  - id: values-never-fake-reviews
+    check: request
+    text: "Honest marketing: never fake reviews, no countdown timers, don't inflate numbers"
   - id: notion-template-idea
     check: idea
     text: "A Notion template that helps freelance designers track client feedback"

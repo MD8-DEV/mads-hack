@@ -300,3 +300,47 @@ def test_store_counts_do_not_double_count_one_person():
               {"type": "order_request", "page": "store", "email_hash": "x"},
               {"type": "order_request", "page": "store", "email_hash": "x"}]
     assert launch.store_counts(events) == {"visitors": 1, "cta_clicks": 1, "order_requests": 1, "buy_intents": 1}
+
+
+# ------------------------------------------------------------------------------------------------ identity check
+def test_identity_check_flags_customer_claims_only():
+    seg, why = "freelance web designers", "We are a student developer team"
+    assert launch.identity_violations("I'm a freelance designer and I lose feedback.", seg, why)
+    assert launch.identity_violations("As a fellow designer, I get it.", seg, why)
+    assert launch.identity_violations("Like you, I juggle client feedback.", seg, why)
+    assert launch.identity_violations("This comes up all the time in client work.", seg, why)
+    assert not launch.identity_violations("We are a student developer team who built a feedback page.", seg, why)
+    assert not launch.identity_violations("Built as a tool for freelance designers.", seg, why)
+    # Allowed when the brief's why_you says so.
+    assert not launch.identity_violations("I'm a freelance designer.", seg, "I am a freelance designer")
+
+
+def test_launch_posts_never_impersonate_the_customer(tmp_path):
+    calls = {"n": 0, "payloads": []}
+
+    def override(task, text):
+        if task != "launch_marketer.launch_posts":
+            return None
+        from tests.stubs_validate_launch import agent_input
+        data = agent_input(text)
+        calls["n"] += 1
+        calls["payloads"].append(data)
+        return {"posts": [{"channel_id": c["id"], "channel_name": c.get("name"), "format": "community post",
+                           "text": ("I'm a freelance designer and this comes up all the time. We built an early "
+                                    "tool that keeps client feedback on one page. Requesting access costs nothing."),
+                           "day": 1 + 3 * i, "timing": "weekday morning", "follow_up": "Reply within a day."}
+                          for i, c in enumerate(data.get("channels") or [])],
+                "summary": "FIXTURE", "questions": []}
+
+    o = Orchestrator(store=RunStore(tmp_path / "runs"), llm=FakeLLM(make_model(override)))
+    rid = to_step(o, "5.2")
+    st = o.advance(rid).steps["5.2"]
+    assert calls["n"] == 2                                   # regenerated once with feedback
+    assert calls["payloads"][0]["founder_identity"] == "I freelance"
+    assert "IDENTITY CHECK FAILED" in calls["payloads"][1]["feedback"]
+    for post in st.output["posts"]:
+        assert "I'm a freelance designer" not in post["text"] and "all the time" not in post["text"]
+        assert "We built an early tool" in post["text"]
+    assert st.output["identity_check"] and "removed" in st.output["identity_check"][0]
+    md = o.store.read_artifact(rid, st.artifacts["deliverable.md"])
+    assert "## Identity check" in md

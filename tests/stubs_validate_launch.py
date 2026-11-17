@@ -79,7 +79,8 @@ def _landing_page(data: dict[str, Any]) -> dict[str, Any]:
                      "Send clients one link instead of long email threads"],
         "follow_up_question": "How many active clients do you have?",
         "faq": [{"question": "What happens after I join?",
-                 "answer": "The founder may email you to ask about how you handle client feedback today."}],
+                 "answer": "The founder may email you to ask about how you handle client feedback today."},
+                {"question": "Who is it for?", "answer": "Freelance web designers with several active clients."}],
         "channel_actions": [{"channel_id": c.get("id"), "action": "Share the tracked link once with a short note",
                              "message_angle": "Lost feedback", "founder_hours": "ESTIMATE: 1 h"}
                             for c in data.get("channels") or []],

@@ -29,6 +29,11 @@ UNASSISTED_TARGET = 0.8
 PREVIOUS_FILES_LIMIT = 60_000      # characters of the previous build passed back to the builder on a repeat
 DOC_FILES = ("docs/quick-start.md", "docs/faq.md", "docs/how-to.md", "docs/limitations.md")
 SUPPORT_PLACEHOLDER = "[support contact: the founder adds this before sharing the docs]"
+RECRUITING_RULE = ("The 2.2 waitlist stores only a one-way hash of each email, so nobody on it can be contacted. "
+                   "Recruit participants only through the founder's own channels (communities, groups and contacts "
+                   "the founder already belongs to or knows), never by emailing the waitlist.")
+OWN_CHANNELS_DEFAULT = ("post a short call for participants in communities and groups you already belong to, and ask "
+                        "people you know who match the screening criteria.")
 
 CHECK_TYPE_HELP = {
     "file_exists": "the file exists and is not empty (value ignored)",
@@ -387,6 +392,17 @@ class BuildAndTest(StepHandler):
 
 
 # ------------------------------------------------------------------ 3.3 User test and docs
+_WAITLIST_CONTACT = re.compile(r"waitlist|wait list|signed up|sign-ups?|you joined", re.I)
+
+
+def _own_channel_route(rec: dict[str, Any]) -> str:
+    """A recruiting route that does not contact the waitlist (which holds only email hashes)."""
+    for text in (rec.get("other_route"), rec.get("from_waitlist")):
+        if text and not _WAITLIST_CONTACT.search(text):
+            return text
+    return OWN_CHANNELS_DEFAULT
+
+
 class UserTestAndDocs(StepHandler):
     def generate(self, ctx: StepContext) -> StepOutput:
         files = _product_files(ctx)
@@ -409,6 +425,7 @@ class UserTestAndDocs(StepHandler):
             "build_test_summary": {"metrics": build.get("metrics"), "open_non_critical_issues": non_critical},
             "target_users": concept.get("segment") or ctx.brief.get("customer"),
             "waitlist_step_2_2": _trim(ctx.prior("2.2"), 1200),
+            "recruiting_rule": RECRUITING_RULE,
             "participants_target": PARTICIPANTS_MIN,
             "support_contact_placeholder": SUPPORT_PLACEHOLDER,
             "feedback": ctx.feedback,
@@ -438,8 +455,9 @@ class UserTestAndDocs(StepHandler):
         questions = []
         if SUPPORT_PLACEHOLDER in out_files["docs/faq.md"]:
             questions.append("Which support contact should the docs show (an address or page you control)?")
-        questions.append(f"Can you reach at least {PARTICIPANTS_MIN} target users from the waitlist for "
-                         "20-30 minute sessions within the test window?")
+        questions.append(f"Can you reach at least {PARTICIPANTS_MIN} target users through your own channels for "
+                         "20-30 minute sessions within the test window? (The waitlist keeps only email hashes and "
+                         "cannot be contacted.)")
         data = {"product_name": name, "docs": list(DOC_FILES), "usability_plan": "usability_test_plan.md",
                 "participants_target": PARTICIPANTS_MIN, "tasks": docs["usability_test"]["tasks"],
                 "limitations": limitations, "doc_warnings": warnings, "outward": outward}
@@ -531,8 +549,11 @@ class UserTestAndDocs(StepHandler):
     def _invite(docs: dict[str, Any], name: str) -> str:
         invite = docs["invite"]
         subject = invite["subject"] or f"Would you try {name} for 20 minutes?"
-        body = invite["body"] or (
-            "Hi [first name],\n\nYou joined the waitlist for " + name + ". I am testing an early version and would "
+        body = invite["body"]
+        if body and _WAITLIST_CONTACT.search(body):
+            body = ""   # the waitlist holds only email hashes: the invite goes out through the founder's own channels
+        body = body or (
+            "Hi [first name],\n\nI am testing an early version of " + name + " and would "
             "value 20-30 minutes of your time while you try one task with it. I will watch how it works for you, not "
             "test you. Nothing is sold during the session.\n\nWould one of these times work: [times]?\n\n[Founder name]")
         return ("DRAFT for the founder to review and send from their own account. MOCKED: this system never sends it.\n\n"
@@ -551,8 +572,8 @@ class UserTestAndDocs(StepHandler):
                  "- No critical failures.", "",
                  "This is a small formative round: report it as 'k of n completed unassisted', with its limits.", "",
                  f"## Who to recruit (at least {PARTICIPANTS_MIN})", "",
-                 f"- From the waitlist (step 2.2): {rec['from_waitlist'] or 'invite waitlist sign-ups who match the screening criteria.'}",
-                 f"- Second route: {rec['other_route'] or 'not specified'}"]
+                 f"- Through the founder's own channels: {_own_channel_route(rec)}",
+                 f"- Not from the waitlist: {RECRUITING_RULE}"]
         if rec["screening"]:
             lines += ["- Screening criteria:"] + [f"  - {s}" for s in rec["screening"]]
         lines += ["- Consent: ask before recording anything. Notes use a participant ID (P1, P2, ...), never names or "

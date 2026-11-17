@@ -236,6 +236,52 @@ def billing_phrase(billing: str) -> str:
     return {"month": "per month", "year": "per year", "one-time": "one-time"}.get(billing, billing)
 
 
+_CURRENCY_CODES = sorted({code for _p, code in _CURRENCY_BY_PLACE} | {"USD", "EUR", "GBP", "EGP"})
+_CODES = "|".join(_CURRENCY_CODES)
+CURRENCY_MARKER = re.compile(rf"[$€£¥₹]|\b(?:{_CODES})\b|\b(?:dollars?|euros?|pounds?|pence|cents?)\b", re.IGNORECASE)
+NOT_MONEY_UNIT = re.compile(r"\b(?:page\s*)?views?\b|pageviews?|\bmembers?\b|\busers\b|\bstars?\b|\bdownloads?\b|"
+                            r"\bsubscribers?\b|\bfollowers?\b|\bvisits?\b|\binstalls?\b|\bposts?\b|\bcomments?\b",
+                            re.IGNORECASE)
+_PRICE_IN_TEXT = re.compile(
+    rf"\s*(?:\b(?:for|at|costing|priced at)\s+)?(?:[$€£¥₹]\s?\d[\d,]*(?:\.\d+)?|\b(?:{_CODES})\s?\d[\d,]*(?:\.\d+)?|"
+    rf"\d[\d,]*(?:\.\d+)?\s?(?:{_CODES})\b)(?:\s*(?:/|per\b|an?\b)\s*(?:month|mo|year|yr|user|seat|account)s?\b)?",
+    re.IGNORECASE)
+
+
+def is_price_unit(unit: str, value_text: str = "") -> bool:
+    """A ledger value counts as a price only with a currency marker, and never when it counts views, users, ..."""
+    text = f"{unit or ''} {value_text or ''}"
+    return bool(CURRENCY_MARKER.search(text)) and not NOT_MONEY_UNIT.search(text)
+
+
+def clean_bundle(text: str) -> str:
+    """Bundle wording for the Van Westendorp questions: no prices (they would anchor answers), no end punctuation."""
+    out = _PRICE_IN_TEXT.sub("", str(text or ""))
+    out = re.sub(r"\(\s*\)", "", out)
+    out = re.sub(r"\s{2,}", " ", out).strip()
+    return out.rstrip(" .;:,!?-").strip()
+
+
+def floor_comparison(recommended: dict[str, Any], floor_value: float | None, currency: str, period: str) -> str:
+    """The above/below-floor sentence, computed from the numbers (never taken from model prose)."""
+    typical = amount_in_period(recommended["sample_bills"].get("typical"), recommended["billing"], period)
+    if floor_value is None:
+        return "The economics floor is unknown, so the recommended price cannot be compared with it."
+    if typical is None:
+        return (f"The recommended package's billing ({billing_phrase(recommended['billing'])}) cannot be compared with "
+                f"the economics floor ({money(floor_value, currency)} {billing_phrase(period)}).")
+    rel = "below" if typical < floor_value else ("equal to" if typical == floor_value else "above")
+    return (f"Computed in code: the recommended package's typical bill ({money(typical, currency)} "
+            f"{billing_phrase(period)}) is {rel} the economics floor ({money(floor_value, currency)} "
+            f"{billing_phrase(period)}).")
+
+
+def strip_floor_claims(text: str) -> str:
+    """Drop model sentences that compare a price with the floor; code states that comparison."""
+    parts = re.split(r"(?<=[.!?])\s+", str(text or "").strip())
+    return " ".join(p for p in parts if p and not re.search(r"\bfloor\b", p, re.IGNORECASE)).strip()
+
+
 def comparable_prices(ctx: StepContext) -> list[dict[str, Any]]:
     """Comparable prices only from step 1.3 competitors with resolvable evidence, or price/spend evidence rows."""
     known = {ev.evidence_id: ev for ev in ctx.ledger.all()}
@@ -249,18 +295,17 @@ def comparable_prices(ctx: StepContext) -> list[dict[str, Any]]:
         price = str(comp.get("price") or "").strip()
         if price and re.search(r"quote|contact|sales|custom", price, re.IGNORECASE):
             price, status = "quote required", "quote_required"
-        elif price and ids and to_number(price) is not None and not re.search(r"unknown|n/?a", price, re.IGNORECASE):
+        elif (price and ids and to_number(price) is not None and not NOT_MONEY_UNIT.search(price)
+              and not re.search(r"unknown|n/?a", price, re.IGNORECASE)):
             status = "sourced"
         else:
             price, status = "unknown", "unknown"
         rows.append({"name": str(comp["name"])[:80], "url": comp.get("url"), "price": price, "status": status,
                      "evidence_ids": ids if status == "sourced" else ids[:3]})
-    money_unit = re.compile(r"[$€£¥₹]|\b[A-Z]{3}\b")
-    money_word = re.compile(r"price|spend|spent|cost|fee|per (month|year|seat|user)|/\s*(mo|month|yr|year)", re.IGNORECASE)
     for ev in ctx.ledger.all():
         if ev.evidence_id in used or ev.value is None:
             continue
-        if money_unit.search(ev.unit or "") or money_word.search(ev.unit or ""):
+        if is_price_unit(ev.unit or ""):
             rows.append({"name": (ev.title or ev.excerpt or ev.evidence_id)[:80], "url": ev.url,
                          "price": f"{ev.value:g} {ev.unit}".strip(),
                          "status": "sourced" if ev.provenance == "SOURCE_FACT" else ev.provenance.lower(),
@@ -379,7 +424,11 @@ class Pricing(StepHandler):
             notes.append("No sourced comparable price exists in the evidence ledger: the outside-option anchor rests "
                          "on the workaround description only.")
 
-        bundle = reply["bundle_description"] or f"the {recommended['name']} package of {concept.get('name') or ctx.run.title}"
+        bundle = (clean_bundle(reply["bundle_description"])
+                  or f"the {recommended['name']} package of {concept.get('name') or ctx.run.title}")
+        rationale = strip_floor_claims(reply["rationale"])
+        floor_sentence = floor_comparison(recommended, floor_value, currency, econ["period"])
+        rationale = f"{rationale} {floor_sentence}".strip()
         questions_vw = vw_questions(bundle, currency, recommended["billing"])
         product_name = str(concept.get("name") or ctx.run.title)
         headline = reply["page_headline"] or f"{product_name}: proposed plans"
@@ -423,7 +472,7 @@ class Pricing(StepHandler):
 
         contract_preview = self.default_contract(ctx)
         markdown = self._markdown(ctx, currency, currency_basis, economics_floor, comparables, outside, value,
-                                  packages, recommended_id, research_design, reply["rationale"], notes,
+                                  packages, recommended_id, research_design, rationale, notes,
                                   contract_preview)
         marketing = "\n".join([headline] + [f"{p['name']}: " + "; ".join(p["includes"]) for p in packages])
 
@@ -435,7 +484,7 @@ class Pricing(StepHandler):
             "currency_basis": currency_basis, "billing": recommended["billing"], "economics_floor": economics_floor,
             "comparables": comparables, "outside_option": outside, "customer_value": value,
             "vw_reference_price": reference_price, "research_design": research_design,
-            "rationale": reply["rationale"], "notes": notes, "prices_are_prospective": True, "mocked": ["click_test"],
+            "rationale": rationale, "floor_comparison": floor_sentence, "notes": notes, "prices_are_prospective": True, "mocked": ["click_test"],
             "outward": [{"kind": "publish", "item_id": "pricing-page", "file": "pricing.html",
                          "when": "before_collect", "target_name": "pricing.html"}],
         }

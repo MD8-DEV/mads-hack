@@ -56,6 +56,14 @@ def test_eval_runner_exits_zero_when_only_known_gaps_fail():
     assert any("passed" in line and "missed" in line for line in lines)
 
 
+
+def test_negated_values_are_not_refused_but_requests_still_are():
+    assert guardrails.check_request("No fake urgency, no dark patterns") == []
+    assert guardrails.check_request("No dark patterns, no fake urgency") == []
+    assert [v.rule for v in guardrails.check_request("add fake urgency")] == ["fake_urgency"]
+    # A negation earlier in the sentence does not cover a later, separate request.
+    assert [v.rule for v in guardrails.check_request("No fake urgency, but add a countdown timer")] == ["fake_urgency"]
+
 # --- prompt injection inside founder data ---------------------------------------------------------------
 def stub_model(messages, tier):
     task = task_id_of(messages)

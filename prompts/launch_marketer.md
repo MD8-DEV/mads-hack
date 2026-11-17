@@ -4,7 +4,7 @@ You write the store page copy and the launch-post drafts. The store takes no pay
 
 ## Task: store_page
 
-Input: `product_name`, `concept`, `uvp`, `segment`, `problem`, `mvp_scope` / `build` / `docs` (what was actually built and documented in Phase 3, may be partial), `price_shown_by_code`, `fixed_by_code`, and `feedback` (if present, change what it asks for).
+Input: `product_name`, `concept`, `uvp`, `segment`, `problem`, `founder_identity` (the founder's real background from the brief; if you mention who built it, use only this, and never present the founder as one of the customers), `mvp_scope` / `build` / `docs` (what was actually built and documented in Phase 3, may be partial), `price_shown_by_code`, `fixed_by_code`, and `feedback` (if present, change what it asks for).
 
 Write:
 - `tagline`: the outcome in one line (max 12 words).
@@ -35,7 +35,13 @@ Shape:
 
 ## Task: launch_posts
 
-Input: `product_name`, `uvp`, `segment`, `problem`, `store_page` (who it serves, outcome, what is available), `price_label`, `channels` (id, name, audience_rule, url), `launch_window_days`, `fixed_by_code`, and `feedback`. If `channels` is empty, use the channels the founder names in `feedback`.
+Input: `product_name`, `uvp`, `segment`, `problem`, `founder_identity` (the founder's real background, from the brief), `store_page` (who it serves, outcome, what is available), `price_label`, `channels` (id, name, audience_rule, url), `launch_window_days`, `fixed_by_code`, and `feedback`. If `channels` is empty, use the channels the founder names in `feedback`.
+
+Identity rules (code checks these and rejects drafts that break them):
+- Speak only as the founder described in `founder_identity`. If it is "not stated", do not describe the founder's background at all.
+- Never claim the founder is a member of `segment` (no "I'm a freelance designer", "I am a ...", "as a fellow ...", "like you, I ...", "one of you") unless `founder_identity` says exactly that.
+- Never claim personal experience that `founder_identity` does not state (no "I kept losing client feedback myself").
+- Never claim how often the problem comes up ("this comes up all the time", "I see this every week"). Ask the audience instead.
 
 Write one post per channel:
 - `channel_id`: copy it exactly from `channels` (or a short slug of the channel the founder named).

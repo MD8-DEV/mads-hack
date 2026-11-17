@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -29,13 +30,22 @@ from phases.base import DataField, Observation, StepHandler, StepOutput
 from store import slugify
 
 CTA_LANDING = "Join the research waitlist"
-AVAILABILITY = ("Not built yet. Joining the waitlist means we may contact you for a short research conversation. "
-                "There is nothing to buy on this page.")
+AVAILABILITY = ("Not built yet. There is nothing to buy on this page. Joining only counts your interest: this "
+                "prototype will not email you.")
 LANDING_BANNER = "Prototype page served locally by Venture Validator. Publishing is MOCKED: nothing is posted publicly."
-CONSENT_TEXT = ("I agree to be contacted by email about this research, including an invitation to a short research "
-                "conversation. My email is used for nothing else and I can ask to be removed at any time.")
-PRIVACY_NOTE = ("Your email address is stored only so the founder can contact you about this research. "
-                "The role question is optional.")
+CONSENT_TEXT = ("I understand this prototype stores only a one-way hash of my email, used to count each sign-up once. "
+                "It cannot read my address back and will not email me.")
+PRIVACY_NOTE = ("This prototype stores only a one-way hash (SHA-256) of your email address, to count each sign-up "
+                "once. It cannot recover your address and will not email you. The role question is optional.")
+WAITLIST_AFTER_JOIN = ("Nothing is sent to you. This prototype stores only a one-way hash of your email to count "
+                       "each sign-up once, so it cannot contact you. Sign-ups only tell the founder whether there is "
+                       "interest.")
+CONTACT_PROMISE = re.compile(r"\b(?:e-?mails?\s+you|e-?mailed\s+you|contact(?:s|ed)?\s+you|reach(?:es)?\s+out|"
+                             r"get\s+in\s+touch|follow(?:s)?[\s-]+up|notif(?:y|ies)\s+you|let\s+you\s+know|"
+                             r"hear\s+from|invit(?:e|es|ation)\b|send\s+you|we['’]ll\s+(?:write|be\s+in))", re.I)
+WAITLIST_DATA_NOTE = ("The waitlist stores only a one-way hash of each email to count sign-ups once; it keeps no "
+                      "address, so nobody on it can be contacted. Do not promise to email, invite or follow up with "
+                      "sign-ups.")
 DEFAULT_WINDOW_DAYS = 14
 
 
@@ -410,17 +420,20 @@ class LandingPageTest(StepHandler):
             "riskiest_assumptions": (canvas.get("riskiest_assumptions") or [])[:3],
             "channels": [{"id": c["id"], "name": c.get("name"), "audience_rule": c.get("audience_rule")} for c in channels],
             "budget": ctx.brief.get("budget"), "founder_time": ctx.brief.get("time"),
-            "fixed_by_code": {"cta": CTA_LANDING, "availability": AVAILABILITY, "social_proof": "none (nothing real yet)"},
+            "fixed_by_code": {"cta": CTA_LANDING, "availability": AVAILABILITY, "social_proof": "none (nothing real yet)",
+                              "data_kept": WAITLIST_DATA_NOTE},
             "feedback": ctx.feedback,
         }
         copy = growth_marketer.landing_page(ctx, payload)
-        faq = list(copy["faq"])
+        # The app keeps only an email hash, so no copy may promise to contact sign-ups.
+        faq = [f for f in copy["faq"] if not CONTACT_PROMISE.search(f"{f['question']} {f['answer']}")]
+        faq.insert(0, {"question": "What happens after I join?", "answer": WAITLIST_AFTER_JOIN})
         asked = " ".join(f["question"].lower() for f in faq)
         if "available" not in asked and "built" not in asked:
             faq.insert(0, {"question": "Can I use it today?", "answer": AVAILABILITY})
         if "pay" not in asked and "cost" not in asked and "charge" not in asked:
             faq.append({"question": "Does joining cost anything?",
-                        "answer": "No. There is nothing to buy; the waitlist is for research conversations."})
+                        "answer": "No. There is nothing to buy; joining only counts your interest."})
         copy["faq"] = faq[:6]
 
         rid = ctx.run_id

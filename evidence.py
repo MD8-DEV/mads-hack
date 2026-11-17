@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,21 @@ PROVENANCE = (
     "FIXTURE",              # synthetic test data, excluded from every live metric and gate
 )
 CLAIM_LABELS = ("SOURCED", "FOUNDER_REPORTED", "ESTIMATE", "ASSUMPTION", "UNKNOWN")
+
+
+# Every claim without a resolvable source is shown with the literal word ASSUMPTION.
+_DISPLAY_LABELS = {"ESTIMATE": "ASSUMPTION (estimate)", "UNKNOWN": "ASSUMPTION (unknown)"}
+
+
+def display_label(label: str) -> str:
+    """Label shown next to an unsourced claim. SOURCED / FOUNDER_REPORTED only render with evidence links."""
+    if label in ("SOURCED", "FOUNDER_REPORTED"):
+        return "ASSUMPTION"
+    return _DISPLAY_LABELS.get(label, label)
+
+
+def _short(text: str) -> str:
+    return textwrap.shorten(text or "", 160, placeholder="...")
 
 
 class Evidence(BaseModel):
@@ -128,10 +144,10 @@ class EvidenceLedger:
             known = [i for i in claim.evidence_ids if self.get(i) is not None]
             unknown = [i for i in claim.evidence_ids if self.get(i) is None]
             if unknown:
-                problems.append(f"claim cites unknown evidence {unknown}: {claim.text[:80]}")
+                problems.append(f"claim cites unknown evidence {unknown}: {_short(claim.text)}")
             claim.evidence_ids = known
             if claim.label in ("SOURCED", "FOUNDER_REPORTED") and not known:
-                problems.append(f"claim labelled {claim.label} without resolvable evidence; relabelled ASSUMPTION: {claim.text[:80]}")
+                problems.append(f"claim labelled {claim.label} without resolvable evidence; relabelled ASSUMPTION: {_short(claim.text)}")
                 claim.label = "ASSUMPTION"
                 claim.basis = claim.basis or "cited evidence could not be resolved"
             if claim.label in ("ESTIMATE", "ASSUMPTION") and not claim.basis:
@@ -149,7 +165,7 @@ class EvidenceLedger:
                 else:
                     refs.append(f"[{evidence_id}]")
             return f"{claim.text} {' '.join(refs)}"
-        return f"{claim.text} `{claim.label}` ({claim.basis})"
+        return f"{claim.text} `{display_label(claim.label)}` ({claim.basis})"
 
     def table_markdown(self, ids: list[str] | None = None) -> str:
         rows = self._rows if ids is None else [r for r in (self.get(i) for i in ids) if r]

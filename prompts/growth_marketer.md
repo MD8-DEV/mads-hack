@@ -11,7 +11,9 @@ Write:
 - `subheadline`: one sentence naming who it is for and the situation, in the customer's words.
 - `benefits`: exactly 3 short benefits, each a concrete outcome for the segment.
 - `follow_up_question`: one optional question shown next to the email field that helps qualify sign-ups (for example the visitor's role or how they handle the problem today).
-- `faq`: 2-4 honest questions and answers (what it is, who it is for, what happens after joining, what data is kept).
+- `faq`: 2-4 honest questions and answers (what it is, who it is for, what data is kept). Code adds the fixed answer to "What happens after I join?".
+
+What the waitlist really does (`fixed_by_code.data_kept`): the prototype stores only a one-way hash of each email, to count each sign-up once. It keeps no address, so it cannot email anyone. Never promise that the founder or anyone will email, contact, invite, notify or follow up with people who join; code removes any FAQ entry that does.
 - `channel_actions`: one per input channel: `channel_id` (copy it exactly), `action` (what the founder does in that channel during the 14 days), `message_angle` (the problem angle for that audience), `founder_hours` (estimate, labelled as such).
 - `repeat_variable`: the one variable to change if the result is a near miss, named now (for example the headline angle or the channel).
 - `summary`: 1-2 sentences. `questions`: at most 3 questions for the founder.

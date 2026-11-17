@@ -262,3 +262,27 @@ def test_legal_approval_requires_acknowledgment_then_publishes_to_mocked_site(tm
     assert len(published) == 3 and all(e["mocked"] and e["approved_by"] == "founder" for e in published)
     run = orch.store.load(rid)
     assert run.steps["4.2"].outcome == "GO"
+
+
+def test_pricing_comparables_need_a_currency_and_floor_sentence_is_computed(tmp_path):
+    from phases.commercial import clean_bundle, is_price_unit
+    assert not is_price_unit("views/month") and not is_price_unit("members") and not is_price_unit("stars")
+    assert not is_price_unit("per month")                     # no currency marker
+    assert is_price_unit("USD per month") and is_price_unit("EGP") and is_price_unit("$/month")
+    assert clean_bundle("the Team plan at $29/month.") == "the Team plan"
+    assert clean_bundle("the Team plan of the tracker (USD 29 per month).") == "the Team plan of the tracker"
+
+    pageviews = Evidence(provenance="SOURCE_FACT", source_type="fixture", url="https://example.com/fixture-wiki",
+                         title="FIXTURE: Wikipedia pageviews", excerpt="FIXTURE row used only by tests",
+                         value=12000, unit="views/month")
+    orch = make_orch(tmp_path, overrides={"pricing_analyst.pricing_options": lambda r: {
+        **r, "rationale": "FIXTURE: Team sits well below the floor. It suits small studios.",
+        "bundle_description": "the Team plan of the client feedback tracker at $29/month."}})
+    rid = start_at(orch, "4.1", seed=SEED_13, evidence=FIXTURE_EVIDENCE + [pageviews])
+    out = orch.advance(rid).steps["4.1"].output
+    assert not any("views" in c["price"] for c in out["comparables"])
+    assert "below the floor" not in out["rationale"] and "It suits small studios." in out["rationale"]
+    assert out["floor_comparison"].startswith("Computed in code:") and out["floor_comparison"] in out["rationale"]
+    vw = out["research_design"]["van_westendorp"]
+    assert vw["bundle"] == "the Team plan of the client feedback tracker"
+    assert all("$29" not in q["text"] and "tracker." not in q["text"] for q in vw["questions"])

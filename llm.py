@@ -39,6 +39,18 @@ _FENCE_START = re.compile(r"^```(?:json|JSON)?\s*")
 _FENCE_END = re.compile(r"\s*```\s*$")
 _THINK = re.compile(r"<think>.*?</think>", re.S)
 
+# Provider error bodies can carry account metadata (organisation ids) or echo a key. Strip both before an
+# error string reaches model_attempts, the decision log or the UI.
+_SECRETS = re.compile(
+    r"\borg_[A-Za-z0-9]+"
+    r"|\b(?:sk|gsk|nvapi)[-_][A-Za-z0-9_-]{8,}"
+    r"|\bBearer\s+[A-Za-z0-9._-]{8,}")
+
+
+def redact(text: str | None) -> str:
+    """Remove organisation ids and anything that looks like an API key from provider error text."""
+    return _SECRETS.sub("[REDACTED]", text or "")
+
 
 def extract_json(text: str | None) -> Any:
     """Parse the first JSON object or array in a model reply."""
@@ -99,7 +111,7 @@ class BaseLLM:
             result.tokens_out = tout or None
             result.attempts = attempts
             return data, result
-        raise LLMError(f"model reply was not valid JSON after {retries + 1} attempts: {last_error}")
+        raise LLMError(redact(f"model reply was not valid JSON after {retries + 1} attempts: {last_error}"))
 
 
 class OpenAICompatLLM(BaseLLM):
@@ -149,14 +161,14 @@ class OpenAICompatLLM(BaseLLM):
             try:
                 result = self._call(route, messages, max_tokens, temperature)
             except Exception as exc:  # noqa: BLE001 - try the next route on any failure
-                attempts.append(f"{route.label}: {type(exc).__name__}: {str(exc)[:160]}")
+                attempts.append(f"{route.label}: {type(exc).__name__}: {redact(str(exc))[:160]}")
                 continue
             result.latency_s = round(time.time() - started, 2)
             result.attempts = attempts + [f"{route.label}: ok"]
             if result.cost:
                 self._add_spend(result.cost)
             return result
-        raise LLMError("All models failed: " + " | ".join(attempts))
+        raise LLMError(redact("All models failed: " + " | ".join(attempts)))
 
     def _call(self, route: ModelRoute, messages: list[dict], max_tokens: int, temperature: float) -> LLMResult:
         base = self.settings.base_url(route.provider)
@@ -169,10 +181,10 @@ class OpenAICompatLLM(BaseLLM):
                    "temperature": temperature}
         resp = self.client.post(url, headers=headers, json=payload)
         if resp.status_code >= 400:
-            raise LLMError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+            raise LLMError(f"HTTP {resp.status_code}: {redact(resp.text)[:200]}")
         data = resp.json()
         if data.get("error") and not data.get("choices"):
-            raise LLMError(str(data["error"])[:200])
+            raise LLMError(redact(str(data["error"]))[:200])
         choice = (data.get("choices") or [{}])[0]
         content = (choice.get("message") or {}).get("content")
         if not content or not str(content).strip():

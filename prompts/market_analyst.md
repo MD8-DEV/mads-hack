@@ -17,6 +17,8 @@ Rules:
 - `icp`: `description`, `inclusion` (criteria a recruiter can apply), `exclusion`, `purchasing_unit`.
 - `largest_coverage_gap`: the most important thing the public data could not show, and how to find it out.
 - `claims`: other consequential statements, each `{"text", "label", "evidence_ids", "basis"}`.
+- Absence claims ("no direct competitors", "nobody offers this", "a gap in the market") may cite only evidence rows that show the absence for this segment and problem (rows the research marked relevant, or statistics rows). Never cite an unrelated repository or thread to support an absence. If nothing relevant was found, label the claim `ASSUMPTION` and say "not found in the searched sources; coverage gap". Code enforces this.
+- Any input you cannot tie to cited evidence is shown as `ASSUMPTION`; do not label a number `SOURCED` unless the number appears in the cited row.
 
 Shape:
 ```

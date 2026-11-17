@@ -5,7 +5,8 @@
 6.2 Metrics       gate E: dashboard definitions; values observable from the local first-party events are
                   computed in code, everything else is "not observable yet" until the founder reports cohorts.
 6.3 DecisionMemo  gate A: cross-phase gate table built in code, PERSEVERE allowed only when every evidence or
-                  test gate in phases 1-5 passed without an override, unit economics computed in code.
+                  test gate in every phase (6.1 and 6.2 included) passed without an override; proven / disproven /
+                  unresolved lists built in code from that table; unit economics computed in code.
 """
 from __future__ import annotations
 
@@ -634,6 +635,32 @@ def classify(row: dict[str, Any]) -> str:
     return "not_evaluable"
 
 
+def _gate_line(r: dict[str, Any]) -> str:
+    actual = "; ".join(f"{k}={_fmt(v)}" for k, v in r["actual"].items()) or "no values"
+    rule = "; ".join(r["thresholds"]) or "locked thresholds"
+    return f"Step {r['step']} ({r['name']}): {rule} -> {actual}"
+
+
+def gate_findings(rows: list[dict[str, Any]]) -> dict[str, list[str]]:
+    """Proven / disproven / unresolved from the gate table only: a measured pass without override is proven, a
+    measured fail without override is disproven; anything overridden or not evaluated is unresolved."""
+    out: dict[str, list[str]] = {"proven": [], "disproven": [], "unresolved": []}
+    for r in rows:
+        if not r["evidence_gate"]:
+            continue
+        kind = classify(r)
+        if kind == "passed":
+            out["proven"].append(f"{_gate_line(r)} (PASSED, measured)")
+        elif kind == "failed" and not r["overridden"]:
+            out["disproven"].append(f"{_gate_line(r)} ({r['status']}, measured)")
+        elif r["overridden"]:
+            out["unresolved"].append(f"{_gate_line(r)} (founder override: {r['outcome'] or 'n/a'} instead of "
+                                     f"{r['recommended'] or 'no outcome'}; untested)")
+        else:
+            out["unresolved"].append(f"Step {r['step']} ({r['name']}): not evaluated ({r['status']}); untested")
+    return out
+
+
 def gate_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
     evidence_rows = [r for r in rows if r["evidence_gate"]]
     kinds = [classify(r) for r in evidence_rows]
@@ -682,8 +709,8 @@ class DecisionMemo(StepHandler):
     def generate(self, ctx: StepContext) -> StepOutput:
         rows = build_gate_table(ctx.run)
         counts = gate_counts(rows)
-        early = [r for r in rows if r["evidence_gate"] and r["phase"] <= 5]
-        persevere_allowed = bool(early) and all(classify(r) == "passed" for r in early)
+        gated = [r for r in rows if r["evidence_gate"]]   # every E/T gate in every phase, 6.1 and 6.2 included
+        persevere_allowed = bool(gated) and all(classify(r) == "passed" for r in gated)
         allowed = list(RECOMMENDATIONS) if persevere_allowed else ["PIVOT", "STOP"]
         any_failed = any(classify(r) == "failed" for r in rows if r["evidence_gate"])
         pricing = ctx.prior("4.1")
@@ -709,8 +736,8 @@ class DecisionMemo(StepHandler):
         replaced = None
         if recommendation not in allowed:
             new = "STOP" if any_failed else "PIVOT"
-            reason = ("PERSEVERE is allowed only when every evidence or test gate in phases 1-5 passed without a "
-                      "founder override" if recommendation == "PERSEVERE" else f"'{recommendation}' is not an allowed option")
+            reason = ("PERSEVERE is allowed only when every evidence or test gate in every phase (6.1 and 6.2 included) passed "
+                      "without a founder override" if recommendation == "PERSEVERE" else f"'{recommendation}' is not an allowed option")
             replaced = {"from": recommendation, "to": new, "reason": reason}
             notes.append(f"The model recommended {recommendation}; replaced with {new} ({reason}; "
                          f"{'an evidence gate FAILED' if any_failed else 'no evidence gate failed outright'}).")
@@ -759,6 +786,10 @@ class DecisionMemo(StepHandler):
         overrides = [f"Step {r['step']} ({r['name']}): founder chose {r['outcome']} instead of "
                      f"{r['recommended'] or 'no outcome (not evaluable)'}. Reason: {r['override_reason'] or 'not given'}"
                      for r in rows if r["overridden"]]
+        findings = gate_findings(rows)
+        model_open = [x for x in reply["unresolved"] if x not in findings["unresolved"]]
+        reply = {**reply, "proven": findings["proven"], "disproven": findings["disproven"],
+                 "unresolved": findings["unresolved"] + model_open}
         markdown = self._markdown(recommendation, pivot_type, return_step, reply, rows, counts, persevere_allowed,
                                   scenarios, econ, econ_currency, experiments, overrides, notes)
         claims = []
@@ -779,6 +810,7 @@ class DecisionMemo(StepHandler):
                                                            "label": "ESTIMATE", "mocked_commerce": True},
             "supporting_evidence": reply["supporting_evidence"], "countervailing_evidence": reply["countervailing_evidence"],
             "overrides": overrides, "notes": notes,
+            "proven": reply["proven"], "disproven": reply["disproven"], "unresolved": reply["unresolved"],
         }
         title = f"Recommendation: {recommendation}" + (f" ({pivot_type})" if pivot_type else "")
         return StepOutput(
@@ -797,9 +829,11 @@ class DecisionMemo(StepHandler):
                  f"Evidence and test gates: **{counts['passed_without_override']} of {counts['total']} passed without "
                  f"override**; {counts['failed']} failed; {counts['not_evaluable']} not evaluable; "
                  f"{counts['overridden']} overridden by the founder. Overrides and unevaluated gates count as untested.",
-                 "", "PERSEVERE is " + ("allowed: every evidence gate in phases 1-5 passed without override."
+                 "", "PERSEVERE is " + ("allowed: every evidence and test gate in every phase (6.1 and 6.2 "
+                                        "included) passed without override."
                                         if persevere_allowed else
-                                        "not allowed: not every evidence gate in phases 1-5 passed without override."),
+                                        "not allowed: not every evidence and test gate in every phase (6.1 and 6.2 "
+                                        "included) passed without override."),
                  "", "## Cross-phase gate table", "",
                  "| Step | Gate | Locked thresholds | Actual | Status | Outcome | Overridden |", "|---|---|---|---|---|---|---|"]
         for r in rows:
@@ -817,10 +851,12 @@ class DecisionMemo(StepHandler):
             lines += [f"- {p['text']}" + (f" ({', '.join(p['evidence_ids'])})" if p["evidence_ids"] else "")
                       for p in points] or ["- _None given._"]
             lines.append("")
+        lines += ["Proven, Disproven and Unresolved are built in code from the gate table: only measured gate results "
+                  "without an override count as proven or disproven.", ""]
         for title, key in (("Proven", "proven"), ("Disproven", "disproven"), ("Assumptions that changed", "assumptions_changed"),
                            ("Unresolved", "unresolved")):
-            if reply[key]:
-                lines += [f"## {title}", ""] + [f"- {x}" for x in reply[key]] + [""]
+            if reply[key] or key != "assumptions_changed":
+                lines += [f"## {title}", ""] + ([f"- {x}" for x in reply[key]] or ["- None."]) + [""]
         lines += ["## Overrides that affect interpretation", ""]
         lines += [f"- {o}" for o in overrides + reply["overrides_affecting_interpretation"]] or ["- None."]
         lines += ["", f"## Unit economics (ESTIMATE; no real sales: checkout is {MOCK_NOTE})", "",

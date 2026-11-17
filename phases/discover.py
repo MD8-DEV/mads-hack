@@ -409,7 +409,7 @@ def _share(value: float | None) -> float | None:
     return value if 0 <= value <= 1 else None
 
 
-def parse_market_inputs(ctx, raw: Any) -> tuple[list[dict[str, Any]], list[str]]:
+def parse_market_inputs(ctx, raw: Any, absence_ids: set[str] | None = None) -> tuple[list[dict[str, Any]], list[str]]:
     """Normalize the model's market inputs and check every SOURCED label against the cited evidence."""
     if isinstance(raw, dict):
         items = []
@@ -435,6 +435,15 @@ def parse_market_inputs(ctx, raw: Any) -> tuple[list[dict[str, Any]], list[str]]
         ids = _valid_ids(ctx, item.get("evidence_ids"))
         label = _label(item.get("label"))
         basis = _clip(item.get("basis"), 300)
+        if absence_ids is not None and ABSENCE_RE.search(basis):
+            kept = [i for i in ids if i in absence_ids]
+            if len(kept) < len(ids):
+                notes.append(f"{name}: an absence claim cited evidence the relevance pass did not mark relevant; "
+                             "those citations were removed")
+            ids = kept
+            if not ids:
+                label = "ASSUMPTION"
+                basis = f"{basis} ({ABSENCE_GAP})"
         if values["base"] is None:
             label = "UNKNOWN"
         elif label == "SOURCED" and not (ids and _value_in_evidence(ctx, values["base"], ids)):
@@ -501,6 +510,59 @@ def compute_market(inputs: list[dict[str, Any]]) -> dict[str, Any]:
     return {"results": results, "notes": notes, "assumption_inputs": assumption_inputs}
 
 
+DISCUSSION_SOURCES = ("hacker_news", "reddit", "stackexchange")
+COMMUNITY_UNITS = ("subscribers", "registered users")
+ABSENCE_RE = re.compile(
+    r"\bno\s+(?:direct\s+|existing\s+|dedicated\s+|known\s+|clear\s+|real\s+)*(?:competitors?|alternatives?|tools?|"
+    r"solutions?|products?|apps?|services?|offerings?)\b|\bnone\s+(?:exist|found|address|serve|offer)|"
+    r"\bnobody\s+(?:offers|sells|serves|addresses)|\bno\s+one\s+(?:offers|sells|serves|addresses)|"
+    r"\b(?:lack|absence)\s+of\s+(?:\w+\s+){0,2}(?:competitors?|tools?|solutions?|products?|alternatives?)|"
+    r"\b(?:gap|white\s+space)\s+in\s+the\s+market|\bunderserved\b|\buntapped\b", re.I)
+ABSENCE_GAP = "not found in the searched sources; coverage gap"
+
+
+def discussion_coverage(stats: dict[str, Any], rows: list[Any]) -> dict[str, Any]:
+    """Per discussion source: did it answer, and how many discussion rows did it return?
+
+    `rows` are the evidence rows the desk research collected. A source counts as available only if it answered
+    and returned at least one discussion row (community-size rows are not discussions)."""
+    status = stats.get("sources_status") or {}
+    counts = {s: 0 for s in DISCUSSION_SOURCES}
+    for row in rows:
+        source = getattr(row, "source_type", None)
+        if source in counts and getattr(row, "unit", None) not in COMMUNITY_UNITS:
+            counts[source] += 1
+    by_source = {s: {"status": status.get(s) or "not called", "rows": counts[s]} for s in DISCUSSION_SOURCES}
+    unavailable = [f"{s} ({v['status']}, {v['rows']} rows)" for s, v in by_source.items()
+                   if v["status"] not in ("ok", "partial") or v["rows"] == 0]
+    return {"by_source": by_source, "unavailable": unavailable,
+            "any_rows": any(v["status"] in ("ok", "partial") and v["rows"] > 0 for v in by_source.values())}
+
+
+def absence_allowed_ids(ctx, stats: dict[str, Any]) -> set[str]:
+    """Evidence an absence claim may cite: rows the relevance pass marked relevant, plus statistics rows
+    (World Bank, Wikipedia, Stack Exchange site stats)."""
+    allowed = set(stats.get("relevant_evidence_ids") or [])
+    allowed |= {r.get("evidence_id") for r in stats.get("github_repos") or [] if r.get("relevant")}
+    allowed |= {r.get("evidence_id") for r in (stats.get("wikipedia_pageviews") or []) + (stats.get("world_bank") or [])}
+    allowed |= {c.get("evidence_id") for c in stats.get("communities") or [] if c.get("verified")}
+    for row in ctx.ledger.all():
+        if row.source_type in ("world_bank", "wikipedia") or (row.source_type == "stackexchange"
+                                                              and row.unit in COMMUNITY_UNITS):
+            allowed.add(row.evidence_id)
+    return {i for i in allowed if i}
+
+
+def display_label(label: str) -> str:
+    """Market-model labels as shown: anything not SOURCED is shown with the literal word ASSUMPTION."""
+    label = str(label or "").upper()
+    if label == "SOURCED":
+        return "SOURCED"
+    if label == "ASSUMPTION":
+        return "ASSUMPTION"
+    return f"ASSUMPTION ({label.lower().replace('_', '-') or 'unknown'})"
+
+
 def _price_supported(ctx, price: str, ids: list[str]) -> bool:
     numbers = _numbers_in(price)
     if not numbers or not ids:
@@ -564,6 +626,18 @@ class DefineMarket(StepHandler):
             research = _research_dict(None)
             research["coverage_notes"].append(note)
         stats = research["stats"]
+        if stats:
+            rows = [r for r in (ctx.ledger.get(i) for i in research["evidence_ids"]) if r is not None]
+            coverage = discussion_coverage(stats, rows)
+            stats["discussion_sources"] = coverage["by_source"]
+            stats["discussion_sources_unavailable"] = coverage["unavailable"]
+            if not coverage["any_rows"]:
+                # Every discussion source failed or returned nothing: a 0 here would be a coverage gap, not a count.
+                stats["independent_discussions"] = None
+                stats["discussions_by_source"] = {}
+                research["coverage_notes"].append(
+                    "No discussion source returned any rows (" + "; ".join(coverage["unavailable"]) + "): "
+                    "independent discussions are INSUFFICIENT_DATA, not a measured 0.")
 
         previous = ctx.prior("1.3") if (ctx.feedback or ctx.attempt) else {}
         payload = {
@@ -582,7 +656,7 @@ class DefineMarket(StepHandler):
         }
         reply = market_analyst.build_market_model(ctx, payload)
 
-        inputs, input_notes = parse_market_inputs(ctx, reply.get("market_inputs"))
+        inputs, input_notes = parse_market_inputs(ctx, reply.get("market_inputs"), absence_allowed_ids(ctx, stats))
         market = compute_market(inputs)
         currency = _clip(reply.get("currency"), 10) or "USD"
         icp_raw = reply.get("icp") or {}
@@ -742,11 +816,19 @@ class DefineMarket(StepHandler):
                                          f"{_fmt(value.get('low'), unit)} - {_fmt(value.get('high'), unit)})",
                                     label="ESTIMATE", basis=f"{value['formula']}; inputs labelled ASSUMPTION/UNKNOWN: "
                                     f"{', '.join(market_model['assumption_inputs']) or 'none'}"))
+        allowed = absence_allowed_ids(ctx, stats)
         for raw in as_list(raw_claims)[:8]:
             if isinstance(raw, dict) and _clip(raw.get("text")):
-                claims.append(Claim(text=_clip(raw.get("text"), 300), label=_label(raw.get("label")),
-                                    evidence_ids=[str(i) for i in as_list(raw.get("evidence_ids"))],
-                                    basis=_clip(raw.get("basis"), 300)))
+                text, label = _clip(raw.get("text"), 300), _label(raw.get("label"))
+                ids, basis = [str(i) for i in as_list(raw.get("evidence_ids"))], _clip(raw.get("basis"), 300)
+                if ABSENCE_RE.search(text):
+                    # An absence claim may cite only relevant rows or statistics rows, never unrelated repositories.
+                    ids = [i for i in _valid_ids(ctx, ids) if i in allowed]
+                    if not ids:
+                        label, basis = "ASSUMPTION", ABSENCE_GAP
+                        if ABSENCE_GAP not in text:
+                            text = f"{text} ({ABSENCE_GAP})"
+                claims.append(Claim(text=text, label=label, evidence_ids=ids, basis=basis))
         return claims
 
     @staticmethod
@@ -761,6 +843,9 @@ class DefineMarket(StepHandler):
               f"| Largest verified community (published audience) | "
               f"{'not measured' if not largest else f'{largest['members']:,}'} | "
               f"{_cell(largest['name'] + ' ' + largest['url']) if largest else '-'} |", ""]
+        if stats.get("discussion_sources_unavailable"):
+            md += ["Discussion sources unavailable or empty (not counted): "
+                   + "; ".join(stats["discussion_sources_unavailable"]) + ".", ""]
         if research["queries"]:
             md += ["**Queries:** " + "; ".join(f"`{q}`" for q in research["queries"]), ""]
         status = stats.get("sources_status") or {}
@@ -780,7 +865,7 @@ class DefineMarket(StepHandler):
             name = item["name"] + (f" ({item['description']})" if item.get("description") else "")
             refs = (" [" + ", ".join(item["evidence_ids"]) + "]") if item["evidence_ids"] else ""
             md.append(f"| {_cell(name, 80)} | {_fmt(item['low'], unit)} | {_fmt(item['value'], unit)} | "
-                      f"{_fmt(item['high'], unit)} | {_cell(item['unit'], 40)} | `{item['label']}` | "
+                      f"{_fmt(item['high'], unit)} | {_cell(item['unit'], 40)} | `{display_label(item['label'])}` | "
                       f"{_cell(item['basis'], 200)}{refs} |")
         if not market_model["inputs"]:
             md.append("| (no inputs given) | | | | | `UNKNOWN` | |")
@@ -790,8 +875,11 @@ class DefineMarket(StepHandler):
                                  ("sam", "SAM", currency), ("som_units", "SOM units", "units"),
                                  ("som", "SOM", currency)):
             r = market_model["results"][key]
+            figure_label = (display_label(r["label"]) if (r["label"] != "ESTIMATE" or market_model["assumption_inputs"]
+                                                          or any(i["label"] != "SOURCED" for i in market_model["inputs"]))
+                            else "ESTIMATE (computed from SOURCED inputs)")
             md.append(f"| {title} | {_fmt(r.get('low'), unit)} | {_fmt(r.get('base'), unit)} | "
-                      f"{_fmt(r.get('high'), unit)} | {r['formula']} | `{r['label']}` |")
+                      f"{_fmt(r.get('high'), unit)} | {r['formula']} | `{figure_label}` |")
         if market_model["notes"]:
             md += ["", *[f"- {_cell(n, 300)}" for n in market_model["notes"]]]
         md += ["", "## Competitors and substitutes", "",
@@ -838,9 +926,17 @@ class DefineMarket(StepHandler):
                                           "note": "published audience, not eligible reach"},
             "coverage_notes": notes, "missing": missing,
         }
+        unavailable = list(stats.get("discussion_sources_unavailable") or [])
+        no_discussion_source = bool(stats.get("discussion_sources")) and len(unavailable) == len(DISCUSSION_SOURCES)
+        details["independent_discussions"]["sources"] = stats.get("discussion_sources") or {}
+        details["independent_discussions"]["unavailable_sources"] = unavailable
         if not stats:
             state_name = WAITING_FOR_DATA
             text = "No desk-research statistics (research disabled or unavailable): submit counts with source URLs."
+        elif "independent_discussions" in missing and no_discussion_source:
+            state_name = INSUFFICIENT_DATA
+            text = ("Independent discussions not measured: every discussion source failed or returned no rows ("
+                    + "; ".join(unavailable) + "). Submit discussion URLs.")
         elif missing:
             state_name = WAITING_FOR_DATA
             text = f"Desk research could not measure: {', '.join(missing)}. Submit them with source URLs."
@@ -848,6 +944,8 @@ class DefineMarket(StepHandler):
             state_name = READY
             text = (f"Desk research: {len(evidence_ids)} evidence rows from free public sources "
                     f"({', '.join(sorted((stats.get('sources_status') or {}).keys()))}).")
+            if unavailable:
+                text += " Discussion sources unavailable or empty: " + "; ".join(unavailable) + "."
         return Observation(observed=observed, measurement_state=state_name, sources=sources[:40],
                            evidence_ids=evidence_ids, details=details, notes=text)
 
@@ -950,6 +1048,26 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").lower()).strip()
 
 
+INCENTIVE_RE = re.compile(r"gift\s*cards?|vouchers?|\bpaid\b|\bpay you\b|compensat|honorarium|\bincentives?\b|"
+                          r"[$€£]\s?\d|\b\d+\s?(?:usd|egp|eur|gbp)\b|amazon|\brewards?\b|\braffle\b", re.I)
+SPEND_MARK = "FOUNDER DECISION: optional spend"
+
+
+def respect_budget(message: str) -> tuple[str, list[str]]:
+    """Recruiting drafts never promise money: an incentive sentence stays only when it is marked as the founder's
+    optional spend; otherwise it is removed and noted."""
+    kept, removed = [], []
+    for sentence in re.split(r"(?<=[.!?])[ \t]+|\n", message):
+        if INCENTIVE_RE.search(sentence) and SPEND_MARK.lower() not in sentence.lower():
+            removed.append(sentence.strip())
+        else:
+            kept.append(sentence)
+    if not removed:
+        return message.strip(), []
+    text = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+    return text, [f"Removed an unmarked incentive from the recruiting message: \"{r[:160]}\"" for r in removed if r]
+
+
 class CustomerInterviews(StepHandler):
     """1.4: Mom Test kit; founder submits interview results; code computes rates and intervals (gate E)."""
 
@@ -959,6 +1077,7 @@ class CustomerInterviews(StepHandler):
         payload = {"concept": concept, "segment": concept.get("segment") or ctx.brief.get("customer"),
                    "brief": {k: ctx.brief.get(k) for k in ("idea", "customer", "why_you", "jurisdiction")
                              if ctx.brief.get(k)},
+                   "budget": ctx.brief.get("budget") or "not stated (treat as zero)",
                    "icp": market.get("icp"),
                    "channels": [{k: c.get(k) for k in ("name", "url", "published_audience")}
                                 for c in market.get("channels") or []],
@@ -1019,7 +1138,7 @@ class CustomerInterviews(StepHandler):
             if len(plan) >= 2:
                 break
             plan.append({"source": source, "url": None, "approach": approach, "target_count": 5})
-        message = str(reply.get("recruiting_message") or "").strip()[:1500]
+        message, incentive_notes = respect_budget(str(reply.get("recruiting_message") or "").strip()[:1500])
         commitments = [_clip(c, 200) for c in as_list(reply.get("commitment_asks")) if _clip(c)][:4] or [
             "An introduction to a colleague who handles the same work",
             "A screen-share of their current workaround (sensitive details hidden)"]
@@ -1061,12 +1180,16 @@ class CustomerInterviews(StepHandler):
             md += ["## Recruiting message (DRAFT, MOCKED send)", "",
                    "Approving it at the threshold lock only places it in the local outbox; nothing is sent.", "",
                    *[f"> {line}" for line in message.splitlines()], ""]
+        if incentive_notes:
+            md += [*[f"- {n}" for n in incentive_notes],
+                   f"- Any incentive must be marked '{SPEND_MARK}' and is never promised.", ""]
         md += ["## How results are judged", "",
                "Submit counts, or the notes as JSON using the template fields. Code computes every rate with a "
                "Wilson 95% interval and discounts compliments and hypothetical answers.", ""]
         data = {"script": {"opening": script.get("opening"), "questions": questions, "closing": script.get("closing")},
                 "removed_questions": removed, "screener": screener, "recruiting_plan": plan,
-                "commitment_asks": commitments, "note_template": NOTE_FIELDS, "outward": outward}
+                "commitment_asks": commitments, "note_template": NOTE_FIELDS, "outward": outward,
+                "incentive_notes": incentive_notes}
         return StepOutput(title="Customer interview kit", markdown="\n".join(md), data=data, files=files,
                           marketing_text=message,
                           summary=f"Prepared a Mom Test kit with {len(questions)} questions and {len(plan)} "

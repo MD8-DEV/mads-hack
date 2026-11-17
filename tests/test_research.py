@@ -281,3 +281,63 @@ def test_rows_have_window_and_independence_metadata(tmp_path):
     since = int(web.calls[0].params["numericFilters"].split(">")[1])
     assert NOW - since > 23 * 30 * 86400
     assert R.within_window(iso(RECENT), NOW) and not R.within_window(iso(OLD), NOW)
+
+
+# ------------------------------------------------------------------------------------- 1.3 measurement rules
+def test_discussion_coverage_zero_rows_everywhere_is_not_a_measured_zero():
+    from types import SimpleNamespace as Row
+    from phases.discover import discussion_coverage
+    stats = {"sources_status": {"hacker_news": "ok", "reddit": "unavailable", "stackexchange": "ok"}}
+    community = Row(source_type="stackexchange", unit="registered users")
+    empty = discussion_coverage(stats, [community])
+    assert not empty["any_rows"] and len(empty["unavailable"]) == 3
+    assert "reddit (unavailable, 0 rows)" in empty["unavailable"]
+    one = discussion_coverage(stats, [community, Row(source_type="hacker_news", unit=None)])
+    assert one["any_rows"] and one["unavailable"] == ["reddit (unavailable, 0 rows)", "stackexchange (ok, 0 rows)"]
+
+
+def test_collect_reports_insufficient_data_only_when_no_discussion_source_has_rows(tmp_path):
+    from gates import INSUFFICIENT_DATA, READY
+    from phases.discover import DefineMarket
+    ctx, _ = make_ctx(tmp_path, enabled=False)
+    contract = DefineMarket().default_contract(ctx)
+    sources = {s: {"status": "ok", "rows": 0} for s in R.DISCUSSION_SOURCES}
+    unavailable = [f"{s} (ok, 0 rows)" for s in R.DISCUSSION_SOURCES]
+    ctx.run.steps["1.3"].output = {"research": {"stats": {
+        "independent_discussions": None, "largest_community_members": 5000, "discussion_sources": sources,
+        "discussion_sources_unavailable": unavailable}}}
+    obs = DefineMarket().collect(ctx, contract)
+    assert obs.measurement_state == INSUFFICIENT_DATA
+    assert obs.details["independent_discussions"]["unavailable_sources"] == unavailable
+    # One source returned rows and none were relevant: 0 is a real measurement.
+    ctx.run.steps["1.3"].output["research"]["stats"].update({
+        "independent_discussions": 0, "discussion_sources": {**sources, "hacker_news": {"status": "ok", "rows": 4}},
+        "discussion_sources_unavailable": unavailable[1:]})
+    obs = DefineMarket().collect(ctx, contract)
+    assert obs.measurement_state == READY and obs.observed["independent_discussions"] == 0
+    assert "reddit" in obs.notes
+
+
+def test_market_labels_and_absence_claims(tmp_path):
+    from evidence import Evidence
+    from phases.discover import ABSENCE_GAP, DefineMarket, display_label
+    assert display_label("ESTIMATE") == "ASSUMPTION (estimate)" and display_label("UNKNOWN") == "ASSUMPTION (unknown)"
+    assert display_label("SOURCED") == "SOURCED"
+    ctx, _ = make_ctx(tmp_path, enabled=False)
+    repo = ctx.ledger.add(Evidence(provenance="SOURCE_FACT", source_type="github", url="https://github.com/fixture/x",
+                                   title="FIXTURE unrelated repository", excerpt="FIXTURE"))
+    stats = {"github_repos": [{"evidence_id": repo.evidence_id, "relevant": False}], "relevant_evidence_ids": []}
+    model = {"inputs": [], "results": {k: {"base": None, "formula": ""} for k in ("tam", "sam", "som")},
+             "currency": "USD", "assumption_inputs": []}
+    claims = DefineMarket._claims(ctx, stats, model, [
+        {"text": "No direct competitors serve this segment", "label": "SOURCED", "evidence_ids": [repo.evidence_id]}])
+    absence = claims[-1]
+    assert absence.label == "ASSUMPTION" and absence.evidence_ids == [] and ABSENCE_GAP in absence.text
+
+
+def test_recruiting_message_never_promises_unmarked_incentives():
+    from phases.discover import SPEND_MARK, respect_budget
+    text, notes = respect_budget("Hi, this is research. I can offer a $10 gift card. A summary of findings is yours.")
+    assert "gift card" not in text and "summary of findings" in text and notes
+    marked = f"Hi. {SPEND_MARK}: a small voucher may be offered."
+    assert respect_budget(marked) == (marked, [])

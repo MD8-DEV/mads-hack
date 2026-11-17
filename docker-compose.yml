@@ -22,6 +22,7 @@ services:
     environment:
       DATA_DIR: /app/data
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-90}
     volumes:
       - app-data:/app/data
     restart: unless-stopped
@@ -29,6 +30,8 @@ services:
   ollama:
     image: ollama/ollama
     profiles: ["local"]
+    environment:
+      OLLAMA_CONTEXT_LENGTH: "16384"
     volumes:
       - ollama-models:/root/.ollama
     ports:

@@ -14,6 +14,8 @@ outward. The pipeline pauses whenever it needs the founder:
 """
 from __future__ import annotations
 
+import json
+import re
 import threading
 import traceback
 from dataclasses import asdict
@@ -35,6 +37,9 @@ from store import (AWAITING_DECISION, AWAITING_LOCK, COLLECTING, DONE, NEW, READ
                    WAITING_FOR_DATA, Run, RunStore, StepState)
 
 GENERATED = "GENERATED"
+_EVIDENCE_ID = re.compile(r"\bE-\d+\b")
+# Handler markdown labels unsourced numbers `ESTIMATE` / `UNKNOWN`; publish them with the literal word ASSUMPTION.
+_LABEL_TOKENS = {"`ESTIMATE`": "`ASSUMPTION (estimate)`", "`UNKNOWN`": "`ASSUMPTION (unknown)`"}
 FINAL_DECISIONS = ("PERSEVERE", "PIVOT", "STOP")
 
 
@@ -571,9 +576,14 @@ class Orchestrator:
             agate = approval_gate(meta.step_id, list(meta.gate_types), approved=False, repeat_count=st.repeat_count,
                                   pivot_target=meta.pivot_target)
             self._approval_record(run, meta, st, "rejected", channel, reason)
-            log.append(agent="founder", action="reject_deliverable", action_type="FOUNDER_APPROVAL", phase=meta.phase,
-                       step=meta.step_id, description=f"Founder rejected the deliverable: {reason}", approved_by="founder",
-                       approval_status="REJECTED", approval_channel=channel, gate_outcome=agate.outcome)
+            entry = log.append(agent="founder", action="reject_deliverable", action_type="FOUNDER_APPROVAL",
+                               phase=meta.phase, step=meta.step_id, description=f"Founder rejected the deliverable: {reason}",
+                               approved_by="founder", approval_status="REJECTED", approval_channel=channel,
+                               gate_outcome=agate.outcome)
+            self._record_founder_decision(
+                run, meta, self._current_report(st), chosen=None,
+                decision=f"rejected the deliverable (gate outcome: {agate.outcome})", reason=reason, channel=channel,
+                log_ids=[entry["log_id"]])
             if agate.outcome == REPEAT:
                 self._apply_outcome(run, meta, st, REPEAT, None, reason, channel)
             else:
@@ -620,7 +630,7 @@ class Orchestrator:
             if not reason:
                 raise FounderActionError("An override needs a reason; it is logged next to the original recommendation.")
             risk = self._skip_risk(meta, gate) if (recommended is None or kind == "skip") else ""
-            log.append(agent="founder", action="override_gate", action_type="FOUNDER_OVERRIDE", phase=meta.phase,
+            decision_entry = log.append(agent="founder", action="override_gate", action_type="FOUNDER_OVERRIDE", phase=meta.phase,
                        step=meta.step_id, description=(f"Founder chose {chosen} instead of "
                                                        f"{recommended or 'no outcome (gate not evaluable)'}. Reason: {reason}" +
                                                        (f" Untested risk: {risk}" if risk else "")),
@@ -630,7 +640,7 @@ class Orchestrator:
                                  "evidence_gate_passed": bool(gate and gate.evidence_passed), "untested_risk": risk})
             st.overridden = True
         else:
-            log.append(agent="founder", action="approve_gate" if kind != "select_concept" else "select_concept",
+            decision_entry = log.append(agent="founder", action="approve_gate" if kind != "select_concept" else "select_concept",
                        action_type="FOUNDER_APPROVAL", phase=meta.phase, step=meta.step_id,
                        description=f"Founder accepted the recommended outcome {chosen} for step {meta.step_id}" +
                                    (f". Note: {reason}" if reason else ""),
@@ -649,7 +659,53 @@ class Orchestrator:
         st.decision = {"kind": kind, "chosen": chosen, "recommended": recommended, "reason": reason,
                        "channel": channel, "at": utc_now(), "override": is_override,
                        "evidence_gate": evidence_gate}
-        self._apply_outcome(run, meta, st, chosen, target, reason, channel)
+        report_rel = self._current_report(st)
+        outcome_log_id = self._apply_outcome(run, meta, st, chosen, target, reason, channel)
+        if is_override:
+            text = f"override: chose {chosen} instead of {recommended or 'no outcome (gate not evaluable)'}"
+        else:
+            text = f"accepted recommendation {chosen}"
+        if chosen == PIVOT_BACK and target:
+            text += f" (pivot back to {target})"
+        self._record_founder_decision(run, meta, report_rel, chosen=chosen, decision=text, reason=reason,
+                                      channel=channel, log_ids=[decision_entry["log_id"]] +
+                                      ([outcome_log_id] if outcome_log_id else []))
+
+    @staticmethod
+    def _current_report(st: StepState) -> str | None:
+        """The gate report of the attempt being decided (never a stale report from an earlier attempt)."""
+        rel = st.artifacts.get("gate_report.md")
+        return rel if rel and f"/attempt{st.attempt}/" in rel else None
+
+    def _record_founder_decision(self, run: Run, meta, report_rel: str | None, *, chosen: str | None, decision: str,
+                                 reason: str, channel: str, log_ids: list[str]) -> None:
+        """Append the founder's decision to the step's gate report. The computed gate block is never changed,
+        except that an approval-only report's PENDING headline and 'Log ID(s): pending' get their final values."""
+        if not report_rel:
+            return
+        path = self.store.artifact_path(run.run_id, report_rel)
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            return
+        head, sep, rest = text.partition("\n")
+        if head.strip() == f"GATE PENDING: step {meta.step_id} {meta.name} waits for founder approval.":
+            if chosen == GO:
+                head = f"GATE APPROVED: step {meta.step_id} {meta.name} (founder approved)."
+            elif chosen is None:
+                head = f"GATE REJECTED: step {meta.step_id} {meta.name} (founder rejected)."
+            else:
+                head = f"GATE NOT APPROVED: step {meta.step_id} {meta.name} (founder chose {chosen})."
+            if log_ids:
+                rest = rest.replace("Log ID(s): pending", f"Log ID(s): {', '.join(log_ids)}", 1)
+        text = head + sep + rest
+        section = ["", "## Founder decision", "",
+                   f"- Decision: {decision}",
+                   f"- Reason: {reason or 'none given'}",
+                   f"- Channel: {channel}",
+                   f"- Decided at (UTC): {utc_now()}",
+                   f"- Decision log ID(s): {', '.join(log_ids) or 'none'}", ""]
+        path.write_text(text.rstrip("\n") + "\n" + "\n".join(section), encoding="utf-8")
 
     @staticmethod
     def _skip_risk(meta, gate: GateResult | None) -> str:
@@ -723,7 +779,8 @@ class Orchestrator:
 
     # ------------------------------------------------------------------ outcomes
     def _apply_outcome(self, run: Run, meta, st: StepState, outcome: str, pivot_target: str | None, reason: str,
-                       channel: str) -> None:
+                       channel: str) -> str | None:
+        """Apply an outcome; returns the log id of the pivot/stop entry it writes, if any."""
         log = self.log(run.run_id)
         run.history.append({"at": utc_now(), "step": meta.step_id, "outcome": outcome, "pivot_target": pivot_target,
                             "reason": reason, "override": bool(st.decision and st.decision.get("override"))})
@@ -732,7 +789,7 @@ class Orchestrator:
             st.status, st.outcome = DONE, GO
             if meta.step_id == "6.3":
                 run.status = "COMPLETED"
-                return
+                return None
             if is_last_in_phase(meta.step_id):
                 self._open_phase_review(run, meta.phase)
             nxt = next_step_id(meta.step_id)
@@ -740,7 +797,7 @@ class Orchestrator:
                 run.current_step = nxt
             else:
                 run.status = "COMPLETED"
-            return
+            return None
         if outcome == REPEAT:
             if st.repeat_count >= REPEAT_LIMIT:
                 raise FounderActionError(f"Repeat limit reached ({REPEAT_LIMIT}). Choose PIVOT_BACK or STOP.")
@@ -753,7 +810,7 @@ class Orchestrator:
             locked = bool(st.contract and Contract(**st.contract).locked)
             st.status = READY_TO_GENERATE if (meta.lock_first and locked) else NEW
             st.outcome = None
-            return
+            return None
         if outcome == PIVOT_BACK:
             target = pivot_target or meta.pivot_target
             st.prior_pivots += 1
@@ -775,19 +832,17 @@ class Orchestrator:
                 s.feedback = f"Pivot back from {meta.step_id}: {reason}"
                 s.outcome = None
             run.current_step = target
-            log.append(agent="orchestrator", action="pivot_back", action_type="PIVOT", phase=meta.phase,
+            return log.append(agent="orchestrator", action="pivot_back", action_type="PIVOT", phase=meta.phase,
                        step=meta.step_id, description=f"Pivoted back from {meta.step_id} to {target}. Reason: {reason}",
                        approved_by="founder", approval_channel=channel, pivot_target=target, gate_outcome=PIVOT_BACK,
-                       outcome="pivot_back")
-            return
+                       outcome="pivot_back")["log_id"]
         if outcome == STOP:
             st.status, st.outcome = DONE, STOP
             run.status = "STOPPED"
             run.status_reason = f"Stopped at step {meta.step_id}: {reason or 'recommended STOP accepted'}"
-            log.append(agent="orchestrator", action="stop_venture", action_type="STOP", phase=meta.phase,
-                       step=meta.step_id, description=run.status_reason, approved_by="founder",
-                       approval_channel=channel, gate_outcome=STOP, outcome="stop")
-            return
+            return log.append(agent="orchestrator", action="stop_venture", action_type="STOP", phase=meta.phase,
+                              step=meta.step_id, description=run.status_reason, approved_by="founder",
+                              approval_channel=channel, gate_outcome=STOP, outcome="stop")["log_id"]
         raise FounderActionError(f"Unknown outcome {outcome}")
 
     def _final_decision(self, run: Run, meta, st: StepState, action: dict, channel: str) -> None:
@@ -801,12 +856,12 @@ class Orchestrator:
         if memo_rec and chosen != memo_rec:
             if not reason:
                 raise FounderActionError("Your decision differs from the memo's recommendation: give a reason.")
-            log.append(agent="founder", action="final_decision", action_type="FOUNDER_OVERRIDE", phase=6, step="6.3",
+            entry = log.append(agent="founder", action="final_decision", action_type="FOUNDER_OVERRIDE", phase=6, step="6.3",
                        description=f"Founder decided {chosen}; memo recommended {memo_rec}. Reason: {reason}",
                        approved_by="founder", approval_status="APPROVED", approval_channel=channel,
                        override={"original_recommendation": memo_rec, "chosen": chosen, "reason": reason})
         else:
-            log.append(agent="founder", action="final_decision", action_type="FOUNDER_APPROVAL", phase=6, step="6.3",
+            entry = log.append(agent="founder", action="final_decision", action_type="FOUNDER_APPROVAL", phase=6, step="6.3",
                        description=f"Founder recorded the final decision: {chosen}" + (f". {reason}" if reason else ""),
                        approved_by="founder", approval_status="APPROVED", approval_channel=channel)
         run.final_decision = {"decision": chosen, "memo_recommendation": memo_rec, "reason": reason, "at": utc_now()}
@@ -815,13 +870,23 @@ class Orchestrator:
         st.status, st.outcome = DONE, GO
         run.history.append({"at": utc_now(), "step": "6.3", "outcome": f"FINAL:{chosen}", "reason": reason})
         run.pending = None
+        log_ids = [entry["log_id"]]
         if chosen == "STOP":
             run.status = "STOPPED"
             run.status_reason = f"Founder's final decision: STOP. {reason}".strip()
-            log.append(agent="orchestrator", action="stop_venture", action_type="STOP", phase=6, step="6.3",
-                       description=run.status_reason, approved_by="founder", approval_channel=channel, outcome="stop")
+            log_ids.append(log.append(agent="orchestrator", action="stop_venture", action_type="STOP", phase=6,
+                                      step="6.3", description=run.status_reason, approved_by="founder",
+                                      approval_channel=channel, outcome="stop")["log_id"])
         else:
             run.status = "COMPLETED"
+        if memo_rec and chosen != memo_rec:
+            text = f"override: chose {chosen} instead of {memo_rec} (final decision)"
+        elif memo_rec:
+            text = f"accepted recommendation {chosen} (final decision)"
+        else:
+            text = f"final decision {chosen} (the memo gave no recommendation)"
+        self._record_founder_decision(run, meta, self._current_report(st), chosen=GO, decision=text,
+                                      reason=reason, channel=channel, log_ids=log_ids)
 
     # ------------------------------------------------------------------ phase-exit review
     def _open_phase_review(self, run: Run, phase: int) -> None:
@@ -919,12 +984,24 @@ class Orchestrator:
             lines += [f"**What I'm doing now:** {out.summary}", ""]
         if st.feedback:
             lines += [f"> Changes requested for this attempt: {st.feedback}", ""]
-        lines += [out.markdown.strip(), ""]
+        body = out.markdown.strip()
+        for token, label in _LABEL_TOKENS.items():
+            body = body.replace(token, label)
+        lines += [body, ""]
         if claims:
             lines += ["## Claims and their evidence", ""]
             lines += [f"- {ledger.render_claim(c)}" for c in claims]
             lines.append("")
-        cited = sorted({i for c in claims for i in c.evidence_ids})
+        cited_ids = {i for c in claims for i in c.evidence_ids}
+        # IDs used inside the body or data (e.g. a market-model basis cell citing E-046) also get their URL row.
+        try:
+            data_text = json.dumps(out.data, default=str)
+        except (TypeError, ValueError):
+            data_text = str(out.data)
+        for found in _EVIDENCE_ID.findall(f"{out.markdown}\n{data_text}"):
+            if ledger.get(found) is not None:
+                cited_ids.add(found)
+        cited = sorted(cited_ids, key=lambda i: int(i.split("-", 1)[1]))
         if cited:
             lines += ["## Evidence cited", "", ledger.table_markdown(cited), ""]
         if st.claim_problems:

@@ -49,7 +49,7 @@ Every step produces a markdown deliverable with a status line `[Phase X: Name | 
 |---|---|---|---|---|
 | 1.1 Sharpen the idea | `strategist` | Rewrites the idea as "[segment] struggles with [problem] when [situation]; today they [workaround], which costs them [cost]" (marked HYPOTHESIS); maps buying roles; generates 3-5 alternative concepts that each change one assumption (segment, problem, buyer, delivery, model) plus the status quo | Problem statement, role map, concept cards, sharp follow-up questions | A: founder approves the framing |
 | 1.2 Score against alternatives | `strategist` | Model scores each concept 1-5 per factor with low/base/high and a basis; **code** computes weighted totals (severity x3, frequency x2, willingness to pay x3, reachability x2, founder fit x2, competition gap x1, speed to MVP x1), ranges, hard blockers and a rank-sensitivity check | Weighted scorecard, recommended concept (even if not the founder's original) | A: founder selects; picking a lower-ranked concept needs a logged reason |
-| 1.3 Define the market | `researcher`, `market_analyst` | Thresholds are locked **before** research runs. `tools/research.py` queries free, keyless public sources (Hacker News Algolia, Reddit JSON, Stack Exchange, GitHub, Wikipedia pageviews, World Bank). Every hit becomes an evidence row with URL, date and independence group; a model only labels which rows describe the problem. Code counts independent discussions and verified community sizes; TAM/SAM/SOM are computed in code from labelled inputs | ICP, bottom-up market model with ranges, competitor and substitute matrix, channel list, coverage gaps | A + E: independent problem discussions (default >= 5 in 24 months) and the largest verified community (default >= 1,000 members) |
+| 1.3 Define the market | `researcher`, `market_analyst` | Thresholds are locked **before** research runs. `tools/research.py` queries free, keyless public sources (Hacker News Algolia, Reddit JSON, Stack Exchange, GitHub, Wikipedia pageviews, World Bank). Every hit becomes an evidence row with URL, date and independence group; a model only labels which rows describe the problem. Code counts independent discussions and verified community sizes; TAM/SAM/SOM are computed in code from labelled inputs | ICP, bottom-up market model with ranges, competitor and substitute matrix, channel list, coverage gaps | A + E: independent problem discussions (default >= 5; Hacker News and Stack Exchange searched over 24 months, Reddit over 12) and the largest verified community (default >= 1,000 members). If every discussion source fails, the count is "insufficient data", not 0 |
 | 1.4 Customer interviews (Mom Test) | `interviewer` | Script that asks only about past behaviour (no pitching, no "would you"), screener, recruiting plan with two sources, note template; founder-submitted notes are coded deterministically, compliments and hypotheticals discounted | Interview kit; coded evidence table with Wilson intervals | E: >= 10 interviews, >= 60% describe the problem unprompted, >= 30% already spend time or money, >= 3 commitments |
 
 ### Phase 2: Validate
@@ -92,7 +92,7 @@ Every step produces a markdown deliverable with a status line `[Phase X: Name | 
 
 ## Gates
 
-Gate engine: `gates.py`. A gate never depends on a model's opinion.
+Gate engine: `gates.py`. The decision rule is deterministic code. Two gate inputs come from a model and are labelled as such: the 1.3 relevance labels (which collected rows describe the problem) and optional `MODEL_REVIEW` bug reports in 3.2, which count only with a concrete reproduction.
 
 1. **Lock before data.** E and T thresholds live in a versioned contract. The founder locks it (tuning targets is allowed only at lock time). Test-gate thresholds are fixed by system policy. Evaluating an unlocked contract raises an error.
 2. **Measure.** Observations come from the system itself (research counts, page events, test runs) or from the founder (`submit_data`, logged as founder data and scored with the Founder Answer Rubric). Missing values never pass: the measurement state is `WAITING_FOR_DATA` or `INSUFFICIENT_DATA` and the gate has **no outcome** until valid data arrives.
@@ -105,7 +105,8 @@ Gate engine: `gates.py`. A gate never depends on a model's opinion.
 | Failing test (T gate) and fewer than 2 repeats used | `REPEAT` (fix and re-run; tests are never skipped) |
 | Weakest criterion < 70% | `PIVOT_BACK` to the step whose assumption the evidence contradicts (alternative: `STOP`) |
 | Weakest criterion < 25% of target, or the step already failed and caused a pivot | `STOP` (alternative: `PIVOT_BACK`) |
-| Sample or traffic floor missed | Gate fails on the floor; the demand criteria are reported as "not adjudicated" |
+| Sample or traffic floor missed | Gate fails on the floor; demand criteria are reported as "not adjudicated" (test criteria stay adjudicated) |
+| A binary or hard criterion missed (e.g. a blocker, a 0/1 check) | `PIVOT_BACK` to the step's pivot target rather than STOP; failing tests are `REPEAT` |
 | Third failure (repeat limit reached) | `PIVOT_BACK` or `STOP` only |
 
 4. **Founder decides.** The founder accepts the recommendation (`FOUNDER_APPROVAL`) or chooses another outcome with a reason (`FOUNDER_OVERRIDE`, logged next to the original recommendation). An override never counts as a passed evidence gate, and the final memo treats overridden gates as untested. Changing a locked threshold after data arrives is a `THRESHOLD_CHANGE`: the old test is marked invalid and must re-run under the new version.
@@ -158,7 +159,7 @@ sequenceDiagram
 - **Idempotency prevents double delivery:** a repeated order submit returns the same order; a repeated webhook event is ignored; `deliver` returns the existing delivery for the same order.
 - **Reconciliation** matches orders, settlements, fees, refunds, payouts and deliveries, and reports mismatches such as a paid order without delivery, a delivery without settlement, duplicate deliveries, refunded orders with active access, or a payout that does not equal the sum of nets.
 
-The suite `reconcile.run_delivery_test_suite` runs the happy path and the failure cases (duplicate order, repeated event, invalid product, email failure with retry, refund) and is the T part of gate 5.3. Its log is `outputs/payment_test_log.md`.
+The suite `reconcile.run_delivery_test_suite` is the T part of gate 5.3. It runs ten scenarios on fixture data: happy path, duplicate submit, repeated delivery event, invalid product, delivery requires payment, email failure with retry, missing or expired access, refund revokes access, clean reconciliation, and reconciliation detecting five injected mismatches. Its log is `outputs/payment_test_log.md`.
 
 ## Data flow
 

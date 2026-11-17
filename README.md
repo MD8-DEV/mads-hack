@@ -2,7 +2,7 @@
 
 An open-source team of AI agents that takes a founder's idea through six gated phases (Discover, Validate, Build, Commercial setup, Launch, Operate and learn) toward a validated, sellable **digital** product, and says **"don't launch this"** when the evidence is weak.
 
-- **Founder in control:** every deliverable, threshold and outward action needs an explicit approve/reject, enforced in code (`approval.py`, `orchestrator.py`). Overrides are allowed but logged with the original recommendation.
+- **Founder in control:** every deliverable with an approval gate, every evidence threshold and every outward action needs an explicit founder decision, enforced in code (`approval.py`, `orchestrator.py`). Test-gate thresholds are fixed by policy. Overrides are allowed but logged with the original recommendation.
 - **Evidence over optimism:** gate thresholds are locked before any data is collected and evaluated in code (`gates.py`). Every claim is `SOURCED` (with a URL), `FOUNDER_REPORTED`, `ESTIMATE` or `ASSUMPTION`.
 - **Nothing real goes out:** payments, publishing, sending and delivery are **MOCKED**. No payment provider, no card data, no posts, no emails leave the machine.
 - **Free to run:** open-weight models on free tiers (Hack Club, Groq, NVIDIA build) or fully local with Ollama. Every agent action is logged to `decision_log.json` with its model and cost.
@@ -73,7 +73,7 @@ All models are open-weight and reached through OpenAI-compatible APIs, with an o
 | Fast (classification, explanations) | Hack Club `google/gemma-4-26b-a4b-it:free` -> Groq `openai/gpt-oss-120b` -> Hack Club `nvidia/nemotron-3.5-super-vl:free` -> NVIDIA `nemotron-3-ultra` -> Ollama `qwen3:8b` |
 
 How to run without paying:
-- **Fully local, no account:** `OLLAMA_BASE_URL=http://ollama:11434 docker compose --profile local up` pulls `qwen3:8b` (open weights, Apache-2.0) into a local Ollama container. Slower on CPU, but costs nothing.
+- **Fully local, no account:** `OLLAMA_BASE_URL=http://ollama:11434 LLM_TIMEOUT_SECONDS=600 docker compose --profile local up` pulls `qwen3:8b` (open weights, Apache-2.0) into a local Ollama container. It costs nothing but is slow on CPU (minutes per step), and the committed demo run used the free cloud tiers, not this path.
 - **Free tiers:** create a free key at Groq (console.groq.com) or NVIDIA build (build.nvidia.com) and put it in `.env`. Hack Club AI keys are free for students.
 - Routes that would draw on paid credit are skipped unless you set `DAILY_BUDGET_USD` above 0 (default `0`).
 - Desk research uses only keyless public endpoints. Set `RESEARCH_ENABLED=0` to run fully offline.
@@ -94,7 +94,7 @@ Not recorded yet. The demo run itself is committed: deliverables and gate report
 - Pose as the founder, a customer or another brand. Posts are drafts the founder sends from their own account.
 - Take, hold, move or refund money, integrate a payment provider, or ask for card or bank details. All commerce is MOCKED.
 - Publish, send, spend or sign anything without the founder's explicit approval of that exact content.
-- Create accounts or store passwords or card numbers. Waitlist emails are stored only as hashes.
+- Create accounts or store passwords or card numbers. Waitlist emails are stored only as one-way hashes, used to count each sign-up once, so the prototype cannot email anyone.
 - Work on physical goods, financial/investment/crypto products, or health or legal advice products.
 - Give legal advice: policies are drafts that a qualified lawyer must review.
 - Hide core features behind a paywall.

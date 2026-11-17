@@ -9,6 +9,7 @@ and, separately, reads the real first-party store events for the demand side.
 """
 from __future__ import annotations
 
+import re
 import shutil
 from typing import Any
 
@@ -37,6 +38,76 @@ def product_identity(ctx) -> tuple[str, str]:
     return name, slugify(name, max_len=40)
 
 
+def founder_identity(ctx) -> str:
+    """The founder's real background, from the brief's why_you (the only identity posts may speak from)."""
+    return str((ctx.brief or {}).get("why_you") or "").strip()
+
+
+# ------------------------------------------------------------------------------- impersonation check (posts)
+_STOP = {"with", "from", "that", "this", "their", "they", "them", "have", "more", "than", "into", "over", "under",
+         "about", "who", "whose", "which", "small", "large", "many", "most", "some", "other", "people", "users",
+         "teams", "team", "owners", "fixture", "segment", "based", "early", "stage", "active", "clients", "client"}
+_IDENTITY_CLAIM = re.compile(
+    r"\b(?:i['’]?m|i\s+am|i['’]?ve\s+been|i\s+have\s+been|i\s+work\s+as|i\s+was|as)\s+(?:also\s+)?"
+    r"(?:a|an|one\s+of\s+the)\s+((?:[a-z][\w-]*\s+){0,3}[a-z][\w-]*)", re.I)
+_GENERIC_CLAIM = re.compile(r"\b(?:as\s+a\s+fellow|fellow\s+[a-z][\w-]*|like\s+(?:many\s+of\s+)?you,?\s+i\b|"
+                            r"one\s+of\s+you\b|i['’]?m\s+one\s+of\s+you)", re.I)
+_FREQUENCY_CLAIM = re.compile(
+    r"\b(?:comes?\s+up|happens?|i\s+(?:keep\s+)?see(?:ing)?\s+(?:this|it))\b[^.!?\n]{0,40}?"
+    r"\b(?:all\s+the\s+time|constantly|often|a\s+lot|every\s+(?:day|week|month)|daily|weekly|regularly|"
+    r"again\s+and\s+again)\b", re.I)
+_EVIDENCE_ID = re.compile(r"\bE-\d{3,}\b")
+
+
+def _words(text: str) -> set[str]:
+    out = set()
+    for w in re.findall(r"[a-z][a-z-]{2,}", (text or "").lower()):
+        out.add(w)
+        out.add(w[:-1] if w.endswith("s") else w)
+    return out
+
+
+def _sentences(text: str) -> list[str]:
+    return [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", text or "") if s.strip()]
+
+
+def identity_violations(text: str, segment: str, why_you: str) -> list[dict[str, str]]:
+    """Sentences that claim the founder belongs to the customer segment (or claim a problem's frequency without an
+    evidence id), when the brief's why_you does not say so. Deterministic: no model involved."""
+    seg = {w for w in _words(segment) if len(w) >= 4 and w not in _STOP}
+    mine = _words(why_you)
+    found: list[dict[str, str]] = []
+    for sentence in _sentences(text):
+        reason = ""
+        first_person = re.search(r"\b(?:i|i['’]m|my|me|myself)\b", sentence, re.I)
+        for match in _IDENTITY_CLAIM.finditer(sentence):
+            if match.group(0).lower().startswith("as") and not first_person:
+                continue   # "built as a tool for designers" describes the product, not the founder
+            phrase = re.split(r"\b(?:for|who|with|that|to|and|in|on|at|of|like)\b", match.group(1), 1, flags=re.I)[0]
+            claimed = {w for w in _words(phrase) if w in seg}
+            if claimed and not claimed <= mine:
+                reason = f"claims the founder is one of the customers ('{match.group(0)}')"
+                break
+        if not reason:
+            generic = _GENERIC_CLAIM.search(sentence)
+            if generic:
+                claimed = {w for w in _words(generic.group(0)) if w in seg}
+                if not claimed or not claimed <= mine:
+                    reason = f"claims shared identity with the audience ('{generic.group(0)}')"
+        if not reason and _FREQUENCY_CLAIM.search(sentence) and not _EVIDENCE_ID.search(sentence):
+            reason = "claims how often the problem comes up without a sourced evidence id"
+        if reason:
+            found.append({"sentence": sentence, "reason": reason})
+    return found
+
+
+def drop_sentences(text: str, sentences: list[str]) -> str:
+    for sentence in sentences:
+        text = text.replace(sentence, "")
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
 def recommended_package(pricing: dict[str, Any]) -> dict[str, Any] | None:
     packages = [p for p in (pricing.get("packages") or []) if isinstance(p, dict)]
     rec = pricing.get("recommended_package_id")
@@ -62,6 +133,7 @@ class StorePage(StepHandler):
         payload = {
             "product_name": name, "concept": ctx.concept(), "uvp": canvas.get("uvp"), "segment": canvas.get("segment"),
             "problem": canvas.get("problem"),
+            "founder_identity": founder_identity(ctx) or "not stated in the brief",
             "mvp_scope": compact(ctx.prior("3.1"), 2000), "build": compact(ctx.prior("3.2"), 1500),
             "docs": compact(ctx.prior("3.3"), 1500),
             "price_shown_by_code": price_text,
@@ -193,9 +265,12 @@ class LaunchPosts(StepHandler):
                 summary="No channels from the Lean Canvas: waiting for the founder to name the launch channels.",
                 questions=["Which 2-3 channels will you post in? Reject this step with their names as feedback."])
         store_link = f"/site/{rid}/store.html"
+        identity = founder_identity(ctx)
+        segment_text = " ".join(str(x or "") for x in (canvas.get("segment"), (ctx.brief or {}).get("customer")))
         payload = {
             "product_name": name, "uvp": canvas.get("uvp"), "segment": canvas.get("segment"),
             "problem": canvas.get("problem"),
+            "founder_identity": identity or "not stated in the brief: do not describe the founder's background",
             "store_page": {k: (store.get("copy") or {}).get(k) for k in ("who_it_serves", "outcome", "available_now",
                                                                        "not_included")},
             "price_label": StorePage.price_text(as_float(store.get("price"), None), str(store.get("currency") or ""),
@@ -210,6 +285,7 @@ class LaunchPosts(StepHandler):
         }
         reply = launch_marketer.launch_posts(ctx, payload)
         posts = self._match(channels, reply["posts"])
+        posts, identity_notes = self._enforce_identity(ctx, payload, channels, posts, segment_text, identity)
         files, outward, texts, schedule = {}, [], [], []
         for post in posts:
             cid = post["channel_id"]
@@ -228,12 +304,53 @@ class LaunchPosts(StepHandler):
             questions.insert(0, f"No draft came back for: {', '.join(missing)}. Reject with feedback to get them, or "
                                 "approve without them.")
         data = {"product_id": product_id, "posts": posts, "schedule": schedule, "outward": outward,
-                "missing_channels": missing}
-        markdown = self._markdown(posts, schedule, missing)
+                "missing_channels": missing, "identity_check": identity_notes}
+        markdown = self._markdown(posts, schedule, missing, identity_notes)
         summary = reply["summary"] or (f"Drafted {len(posts)} launch post(s), one per channel, for you to post from "
                                        "your own account; approving puts them in the local outbox only.")
         return StepOutput(title=str(name), markdown=markdown, data=data, files=files, summary=summary,
                           questions=questions[:3], marketing_text="\n\n".join(texts))
+
+    def _enforce_identity(self, ctx, payload, channels, posts, segment_text: str,
+                          identity: str) -> tuple[list[dict[str, Any]], list[str]]:
+        """Reject posts that speak as a customer instead of as the founder: regenerate once with feedback, then drop
+        any sentence that still fails and note it."""
+        bad = {p["channel_id"]: identity_violations(p["text"], segment_text, identity) for p in posts}
+        bad = {cid: v for cid, v in bad.items() if v}
+        notes: list[str] = []
+        if not bad:
+            return posts, notes
+        problems = "; ".join(f"[{cid}] \"{v['sentence'][:160]}\": {v['reason']}" for cid, vs in bad.items() for v in vs)
+        retry_payload = {**payload, "feedback": (
+            f"{payload.get('feedback') or ''}\nIDENTITY CHECK FAILED. Speak only as the founder, whose background "
+            f"is: {identity or 'not stated'}. Do not claim to be a member of the audience, do not say 'as a fellow' "
+            f"or 'like you, I', and do not claim how often the problem comes up. Rewrite: {problems}").strip()}
+        try:
+            retry = self._match(channels, launch_marketer.launch_posts(ctx, retry_payload)["posts"])
+        except Exception:  # noqa: BLE001 - a failed retry falls back to dropping the offending sentences
+            retry = []
+        retry_by_id = {p["channel_id"]: p for p in retry}
+        out = []
+        for post in posts:
+            cid = post["channel_id"]
+            if cid not in bad:
+                out.append(post)
+                continue
+            candidate = retry_by_id.get(cid)
+            if candidate and not identity_violations(candidate["text"], segment_text, identity):
+                out.append(candidate)
+                notes.append(f"{cid}: regenerated once because the first draft spoke as a customer or claimed an "
+                             "unsourced frequency.")
+                continue
+            source = candidate or post
+            still = identity_violations(source["text"], segment_text, identity)
+            source = {**source, "text": drop_sentences(source["text"], [v["sentence"] for v in still])}
+            notes += [f"{cid}: removed \"{v['sentence'][:160]}\" ({v['reason']})." for v in still]
+            if source["text"]:
+                out.append(source)
+            else:
+                notes.append(f"{cid}: nothing was left after removing those sentences, so no draft is offered.")
+        return out, notes
 
     @staticmethod
     def _match(channels: list[dict[str, Any]], raw_posts: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -276,7 +393,7 @@ class LaunchPosts(StepHandler):
         return "\n".join(lines) + "\n"
 
     @staticmethod
-    def _markdown(posts, schedule, missing) -> str:
+    def _markdown(posts, schedule, missing, identity_notes=None) -> str:
         lines = ["## Launch schedule", "",
                  "Each post is a draft for the founder to post from their own account. Approve the step (optionally "
                  "only some posts) to place them in the local outbox; nothing is posted by the system (MOCKED).", "",
@@ -289,6 +406,11 @@ class LaunchPosts(StepHandler):
                       f"Tracked link: `{post['link']}`", "", "```text", post["text"].strip(), "```"]
         if missing:
             lines += ["", f"_No draft for: {', '.join(missing)}._"]
+        lines += ["", "## Identity check", "",
+                  "Every draft speaks only as the founder (background from the brief's why_you). Code rejects "
+                  "sentences that claim the founder is one of the customers or claim how often the problem comes up "
+                  "without a sourced evidence id."]
+        lines += [f"- {n}" for n in (identity_notes or [])] or ["- All drafts passed on the first try."]
         lines += ["", "No testimonials, ratings or user numbers appear in these drafts: none exist yet.", ""]
         return "\n".join(lines)
 

@@ -118,3 +118,43 @@ def test_approval_gate():
     assert approval_gate("1.1", ["A"], approved=False).outcome == REPEAT
     limit = approval_gate("2.1", ["A"], approved=False, repeat_count=REPEAT_LIMIT, pivot_target="1.4")
     assert limit.outcome == PIVOT_BACK and limit.forced_by_repeat_limit
+
+
+def test_floor_miss_keeps_failing_test_criteria_adjudicated():
+    c = lock_contract(Contract(step_id="5.2", gate_types=["T", "E"], pivot_target="2.1", criteria=[
+        Criterion(key="delivery_tests_pass_rate", label="Delivery tests passing", target=1.0, kind="hard"),
+        Criterion(key="store_visitors", label="Store visitors", target=500, kind="floor"),
+        Criterion(key="buy_intent_rate", label="Buy-intent rate", target=0.03, kind="proportion")]), "system:tests")
+    observed = {"delivery_tests_pass_rate": 0.5, "store_visitors": 40, "buy_intent_rate": 0.1}
+    gate = evaluate(c, observed, test_gate=True)
+    by_key = {r.key: r for r in gate.criteria}
+    assert by_key["delivery_tests_pass_rate"].passed is False      # the failing test is not hidden by the floor
+    assert by_key["buy_intent_rate"].passed is None                # demand stays unadjudicated
+    assert gate.outcome == REPEAT and not gate.evidence_passed
+    limit = evaluate(c, observed, test_gate=True, repeat_count=REPEAT_LIMIT)
+    assert limit.outcome == PIVOT_BACK and limit.forced_by_repeat_limit
+
+
+def test_floor_miss_with_passing_hard_criteria_still_fails_on_the_floor():
+    c = locked(contract(Criterion(key="tests", label="Tests passing", target=1.0, kind="hard"),
+                        Criterion(key="visitors", label="Unique visitors", target=200, kind="floor"),
+                        Criterion(key="rate", label="Sign-up rate", target=0.1, kind="proportion")))
+    gate = evaluate(c, {"tests": 1.0, "visitors": 150, "rate": 0.5})
+    by_key = {r.key: r for r in gate.criteria}
+    assert by_key["tests"].passed is True and by_key["rate"].passed is None
+    assert gate.outcome == REPEAT and gate.status == "PARTIAL"     # 75% of the floor: a near miss
+
+
+def test_binary_miss_alone_pivots_back_instead_of_stop():
+    bugs = Criterion(key="open_bugs", label="Open critical bugs", op="<=", target=0, kind="hard")
+    gate = evaluate(locked(contract(signups(), bugs)), {"signups": 120, "open_bugs": 3})
+    assert gate.outcome == PIVOT_BACK and gate.pivot_target == "1.4" and gate.alternative == STOP
+    flag = Criterion(key="in_range", label="Price inside the acceptable range (1 = yes)", target=1, kind="hard")
+    assert evaluate(locked(contract(signups(), flag)), {"signups": 120, "in_range": 0}).outcome == PIVOT_BACK
+    # Without a pivot target, or after an earlier pivot, STOP remains the recommendation.
+    assert evaluate(locked(contract(signups(), bugs, pivot_target=None)),
+                    {"signups": 120, "open_bugs": 3}).outcome == STOP
+    assert evaluate(locked(contract(signups(), bugs)), {"signups": 120, "open_bugs": 3},
+                    prior_pivots=1).outcome == STOP
+    # A demand criterion below the stop band still recommends STOP, blocker or not.
+    assert evaluate(locked(contract(signups(), bugs)), {"signups": 10, "open_bugs": 3}).outcome == STOP

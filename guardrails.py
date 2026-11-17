@@ -44,7 +44,7 @@ REQUEST_RULES: list[tuple[str, re.Pattern[str], str]] = [
      "I won't invent sign-ups, users, metrics, interviews or results. Gates only use real observations."),
     ("fake_signups", _rx(r"\b(pretend\w*|say|claim\w*)\b[^.\n]{0,30}\b(we|i)\s+(have|had|got)\s+\d[\d,]*\s*(\w+\s+)?(users?|customers?|sign[- ]?ups?|downloads?)\b"),
      "I won't claim users or sign-ups that don't exist."),
-    ("fake_urgency", _rx(r"\b(countdown|fake (deadline|scarcity|timer)|only \d+ (left|spots?|seats?)|limited[- ]time offer|offer (ends|expires)|act now|last chance)\b"),
+    ("fake_urgency", _rx(r"\b(countdown|fake (deadline|scarcity|timers?|urgency)|only \d+ (left|spots?|seats?)|limited[- ]time offer|offer (ends|expires)|act now|last chance)\b"),
      "I won't add countdown timers or fake urgency or scarcity."),
     ("income_promise", _rx(r"\b(guarantee[sd]?|promise[sd]?)\b[^.\n]{0,50}\b(income|profit|revenue|earnings?|money|returns?|success|sales)\b"),
      "I won't promise income, sales or success. I can report evidence and uncertainty instead."),
@@ -93,14 +93,33 @@ MARKETING_RULES: list[tuple[str, re.Pattern[str], str]] = [
 ]
 
 
+# A negation word in the 15 characters before a match, with no clause break in between, means the text
+# rules the thing out ("No dark patterns, no fake urgency") rather than asks for it.
+_NEGATION_WINDOW = 15
+_NEGATED = _rx(r"\b(no|not|never|without|don['\u2019]?t|do not|avoid|avoids|ban|bans)\b[^,.;:!?\n\u2013\u2014]*$")
+
+
+def _negated(text: str, start: int) -> bool:
+    return bool(_NEGATED.search(text[max(0, start - _NEGATION_WINDOW):start]))
+
+
 def _scan(text: str, rules: list[tuple[str, re.Pattern[str], str]]) -> list[Violation]:
+    text = text or ""
     found: list[Violation] = []
     seen: set[str] = set()
     for rule, pattern, message in rules:
-        match = pattern.search(text or "")
-        if match and rule not in seen:
-            seen.add(rule)
-            found.append(Violation(rule=rule, message=message, match=match.group(0)[:120]))
+        if rule in seen:
+            continue
+        pos = 0
+        while pos <= len(text):
+            match = pattern.search(text, pos)
+            if match is None:
+                break
+            if not _negated(text, match.start()):
+                seen.add(rule)
+                found.append(Violation(rule=rule, message=message, match=match.group(0)[:120]))
+                break
+            pos = match.start() + 1
     return found
 
 

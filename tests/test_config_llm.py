@@ -125,3 +125,26 @@ def test_fake_llm_routes_by_task_id_and_repairs_once():
     assert result.model == "stub/fake-llm" and result.cost == 0
     with pytest.raises(LLMError):
         FakeLLM(lambda m, t: "never json").chat_json("s", "TASK_ID: x.y")
+
+
+def test_provider_errors_are_redacted(tmp_path, keys):
+    body = ('{"error": {"message": "Rate limit reached for model in organization org_01abcDEF23ghij on tokens. '
+            'Key gsk_ABCdef1234567890xyz was used; also sk-proj-abcdefgh12345678 and nvapi-QWERTY12345678"}}')
+
+    def handler(request):
+        if "groq" in str(request.url):
+            return httpx.Response(429, text=body)
+        return ok_reply("qwen3:8b")
+
+    settings = make_settings(tmp_path, "groq:openai/gpt-oss-120b,ollama:qwen3:8b")
+    llm = OpenAICompatLLM(settings, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    result = llm.chat([{"role": "user", "content": "hi"}])
+    joined = " ".join(result.attempts)
+    assert "HTTP 429" in joined and "[REDACTED]" in joined
+    for secret in ("org_01abcDEF23ghij", "gsk_ABCdef", "sk-proj-abcdefgh", "nvapi-QWERTY"):
+        assert secret not in joined
+    failing = OpenAICompatLLM(make_settings(tmp_path, "groq:openai/gpt-oss-120b"),
+                              client=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(429, text=body))))
+    with pytest.raises(LLMError) as err:
+        failing.chat([{"role": "user", "content": "hi"}])
+    assert "org_01abc" not in str(err.value) and "gsk_ABC" not in str(err.value)

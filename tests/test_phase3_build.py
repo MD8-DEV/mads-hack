@@ -149,6 +149,11 @@ def test_failing_build_repeats_then_passes_and_user_test_goes(tmp_path):
     limitations = orch.store.read_artifact(rid, st.artifacts["docs/limitations.md"])
     assert "localStorage" in limitations and "Sync between devices" in limitations
     assert st.output["doc_warnings"] == []
+    # The waitlist holds only email hashes: recruiting goes through the founder's own channels.
+    plan = orch.store.read_artifact(rid, st.artifacts["usability_test_plan.md"])
+    assert "founder's own channels" in plan and "invite waitlist sign-ups" not in plan
+    invite = orch.store.read_artifact(rid, st.artifacts["usability_invite.md"])
+    assert "joined the waitlist" not in invite
     criteria = {c["key"]: c for c in st.contract["criteria"]}
     assert criteria["participants"]["kind"] == "floor" and criteria["participants"]["target"] == 5
     assert criteria["unassisted_completion_rate"]["target"] == 0.8

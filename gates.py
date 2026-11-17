@@ -12,7 +12,18 @@ arithmetic and applies the locked decision rule exactly:
   step, the recommendation is STOP;
 * a missing value never passes: the gate is NOT_EVALUABLE and has no outcome
   until valid data arrives (the founder may still override, which is logged
-  and never counted as a passed evidence gate).
+  and never counted as a passed evidence gate);
+* a missed sample/traffic floor leaves the demand criteria (scalable and
+  proportion) not adjudicated, but hard criteria (blockers such as tests)
+  are still adjudicated and reported; on a test gate a failing hard
+  criterion means REPEAT (fix and re-run), or PIVOT_BACK after the repeat
+  limit, whatever the floor shows;
+* a miss on a hard or binary criterion (kind "hard", or a target of 0 such as
+  "open critical bugs <= 0", or a 0/1 flag) is a blocker, not a measure of
+  demand: its percentage of target is meaningless, so on its own it never
+  puts the result in the STOP band. It recommends PIVOT_BACK to the pivot
+  target instead (STOP only when there is no pivot target, the step already
+  pivoted once, or a demand criterion is itself below the stop band).
 """
 from __future__ import annotations
 
@@ -168,6 +179,13 @@ def check_criterion(criterion: Criterion, actual: float | None) -> CriterionResu
     return result
 
 
+def _is_binary(result: CriterionResult) -> bool:
+    """Hard blockers, zero-target counts (e.g. open critical bugs <= 0) and 0/1 flags."""
+    if result.kind == "hard" or result.target == 0:
+        return True
+    return result.op in (">=", ">") and result.target == 1 and result.unit in ("", "flag", "bool", "boolean")
+
+
 def evaluate(contract: Contract, observed: dict[str, float | None], *, repeat_count: int = 0,
              measurement_state: str = READY, prior_pivots: int = 0, test_gate: bool = False,
              pivot_target: str | None = None) -> GateResult:
@@ -189,11 +207,12 @@ def evaluate(contract: Contract, observed: dict[str, float | None], *, repeat_co
     failed_floors = [r for r in floors if r.passed is False]
     if failed_floors:
         # A missed sample/traffic floor fails the gate, and the demand criteria cannot be adjudicated.
+        # Hard criteria (blockers such as tests) do not depend on traffic, so they stay adjudicated.
         for r in results:
-            if r.kind != "floor":
+            if r.kind in ("scalable", "proportion"):
                 r.passed = None
                 r.note = "not adjudicated: sample/traffic floor missed"
-        adjudicated = failed_floors
+        adjudicated = failed_floors + [r for r in results if r.kind == "hard" and r.passed is not None]
     else:
         missing = [r for r in results if r.passed is None]
         if missing:
@@ -215,6 +234,10 @@ def evaluate(contract: Contract, observed: dict[str, float | None], *, repeat_co
     weakest = min((r.pct_of_target or 0.0) for r in failed)
     gate.pct_of_target = round(weakest, 4)
     hard_failed = any(r.kind == "hard" for r in failed)
+    # Hard/binary misses are blockers: their % of target never decides the STOP band on its own.
+    graded = [r for r in failed if not _is_binary(r)]
+    graded_weakest = min((r.pct_of_target or 0.0) for r in graded) if graded else None
+    in_stop_band = graded_weakest is not None and graded_weakest < contract.stop_below
     gate.status = "PARTIAL" if (weakest >= contract.repeat_band and not hard_failed) else "FAILED"
     can_repeat = repeat_count < REPEAT_LIMIT
 
@@ -240,17 +263,22 @@ def evaluate(contract: Contract, observed: dict[str, float | None], *, repeat_co
         gate.forced_by_repeat_limit = True
         gate.reasons.append(f"Repeat limit ({REPEAT_LIMIT}) reached; a near miss can no longer be repeated.")
 
-    if weakest < contract.stop_below or prior_pivots >= 1:
+    if in_stop_band or prior_pivots >= 1:
         gate.outcome, gate.alternative = STOP, (PIVOT_BACK if target_step else None)
-        if weakest < contract.stop_below:
+        if in_stop_band:
             gate.reasons.append(
-                f"Result is {weakest:.0%} of target, below the locked stop band ({contract.stop_below:.0%}).")
+                f"Result is {graded_weakest:.0%} of target, below the locked stop band ({contract.stop_below:.0%}).")
         if prior_pivots >= 1:
             gate.reasons.append("This step already failed once and triggered a pivot: repeated failure.")
     else:
         gate.outcome, gate.alternative = (PIVOT_BACK, STOP) if target_step else (STOP, None)
-        gate.reasons.append(
-            f"Result is {weakest:.0%} of target, below the repeat band ({contract.repeat_band:.0%}).")
+        if graded:
+            gate.reasons.append(
+                f"Result is {graded_weakest:.0%} of target, below the repeat band ({contract.repeat_band:.0%}).")
+        else:
+            gate.reasons.append(
+                "Only hard/binary criteria (blockers) missed: a blocker alone does not put the result in the stop "
+                "band, so the recommendation is to pivot back" + (f" to {target_step}." if target_step else "."))
     if hard_failed:
         gate.reasons.append("A hard criterion (blocker) failed.")
     return gate

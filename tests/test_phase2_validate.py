@@ -234,6 +234,13 @@ def test_landing_html_is_honest_self_contained_and_wired(orch):
     assert '"page_view"' in page and 'page: "landing"' in page
     assert page.count("Join the research waitlist") >= 2
     assert "Not built yet" in page
+    # The app keeps only an email hash: the page says so and never promises to contact anyone.
+    assert "one-way hash" in page and "will not email" in page
+    assert "may email you" not in page and "contacted by email" not in page
+    answers = [f["answer"] for f in st.output["copy"]["faq"]]
+    assert validate.WAITLIST_AFTER_JOIN in answers
+    assert not any(validate.CONTACT_PROMISE.search(a) for a in answers
+                   if a not in (validate.WAITLIST_AFTER_JOIN, validate.AVAILABILITY))
     assert not re.search(r"https?://", page)               # no external fonts, scripts, images or trackers
     assert not re.search(r"countdown|testimonial|★", page, re.I)
     assert guardrails.check_marketing(page) == []
