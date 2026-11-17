@@ -297,8 +297,11 @@ def test_landing_gate_missed_visitor_floor_pivots_back_to_lean_canvas(orch, monk
     close_window(monkeypatch, end)
     run = orch.advance(rid)
     gate = run.steps["2.2"].gate
-    assert gate["outcome"] == "PIVOT_BACK" and gate["pivot_target"] == "2.1"
-    orch.act(rid, {"kind": "approve", "step": "2.2", "channel": "cli"})
+    # A missed traffic floor means demand was not measured: fix traffic and re-run (REPEAT), or pivot back to
+    # the channel step 2.1, which is offered as the alternative. Never STOP on sample size alone.
+    assert gate["outcome"] == "REPEAT" and gate["alternative"] == "PIVOT_BACK" and gate["pivot_target"] == "2.1"
+    orch.act(rid, {"kind": "decide", "step": "2.2", "outcome": "PIVOT_BACK", "reason": "fix channels first",
+                   "channel": "cli"})
     assert orch.store.load(rid).current_step == "2.1"
 
 

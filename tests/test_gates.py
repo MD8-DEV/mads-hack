@@ -142,7 +142,7 @@ def test_floor_miss_with_passing_hard_criteria_still_fails_on_the_floor():
     gate = evaluate(c, {"tests": 1.0, "visitors": 150, "rate": 0.5})
     by_key = {r.key: r for r in gate.criteria}
     assert by_key["tests"].passed is True and by_key["rate"].passed is None
-    assert gate.outcome == REPEAT and gate.status == "PARTIAL"     # 75% of the floor: a near miss
+    assert gate.outcome == REPEAT and gate.status == "FAILED"      # floor-only miss: fix traffic, re-run, never STOP
 
 
 def test_binary_miss_alone_pivots_back_instead_of_stop():

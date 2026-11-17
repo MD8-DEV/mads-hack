@@ -105,9 +105,11 @@ Gate engine: `gates.py`. The decision rule is deterministic code. Two gate input
 | Failing test (T gate) and fewer than 2 repeats used | `REPEAT` (fix and re-run; tests are never skipped) |
 | Weakest criterion < 70% | `PIVOT_BACK` to the step whose assumption the evidence contradicts (alternative: `STOP`) |
 | Weakest criterion < 25% of target, or the step already failed and caused a pivot | `STOP` (alternative: `PIVOT_BACK`) |
-| Sample or traffic floor missed | Gate fails on the floor; demand criteria are reported as "not adjudicated" (test criteria stay adjudicated) |
+| Sample or traffic floor missed | Gate fails on the floor; demand criteria are reported as "not adjudicated" (test criteria stay adjudicated). A small sample is not evidence against demand, so the recommendation is `REPEAT` (fix recruitment or traffic), then `PIVOT_BACK` to the channel step after the repeat limit, never `STOP` |
 | A binary or hard criterion missed (e.g. a blocker, a 0/1 check) | `PIVOT_BACK` to the step's pivot target rather than STOP; failing tests are `REPEAT` |
 | Third failure (repeat limit reached) | `PIVOT_BACK` or `STOP` only |
+
+**Decision-quality evals.** `evals/gate_cases.yaml` encodes the playbook's review set (12/100 sign-ups, the 30/300 boundary, a near miss after two repeats, a tracking outage, an immature window, a missing value, ten interviews from two organizations, a traffic floor missed after repeats, failing tests hidden by low traffic, a binary price-range miss, repeated failure after a pivot, a smaller-is-better near miss, all criteria met, and an unlocked contract). `python evals/run_gate_evals.py` and `tests/test_gate_evals.py` check the engine against every case.
 
 4. **Founder decides.** The founder accepts the recommendation (`FOUNDER_APPROVAL`) or chooses another outcome with a reason (`FOUNDER_OVERRIDE`, logged next to the original recommendation). An override never counts as a passed evidence gate, and the final memo treats overridden gates as untested. Changing a locked threshold after data arrives is a `THRESHOLD_CHANGE`: the old test is marked invalid and must re-run under the new version.
 

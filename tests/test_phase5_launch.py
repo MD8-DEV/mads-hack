@@ -252,7 +252,8 @@ def test_delivery_gate_low_traffic_pivots_to_lean_canvas(orch, suite, monkeypatc
     write_events(orch, rid, store_events(start, 300, 30))
     close_window(monkeypatch, end)
     gate = orch.advance(rid).steps["5.3"].gate
-    assert gate["outcome"] == "PIVOT_BACK" and gate["pivot_target"] == "2.1"
+    # Floor-only miss (tests pass, too little traffic): REPEAT with the channel step 2.1 as the alternative.
+    assert gate["outcome"] == "REPEAT" and gate["alternative"] == "PIVOT_BACK" and gate["pivot_target"] == "2.1"
 
 
 def test_failing_delivery_test_recommends_repeat(orch, suite, monkeypatch):

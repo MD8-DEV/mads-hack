@@ -1,0 +1,116 @@
+# Decision-quality review set for the gate engine (gates.py).
+#
+# Each case is a locked contract plus observed values and the outcome the playbook's rules
+# require. evals/run_gate_evals.py checks the engine against every case; tests/test_gate_evals.py
+# runs the same file in the test suite. All numbers are FIXTURE values, not venture data.
+#
+# Fields: criteria (key, target, kind, op), observed, measurement_state, repeat_count,
+# prior_pivots, test_gate, pivot_target, expect (status, outcome, alternative, evidence_passed,
+# not_adjudicated, raises).
+
+cases:
+  - id: signups-12-of-100
+    why: Spec example. A locked target of 100 waitlist sign-ups in 14 days; 12 arrive (12%, below the 25% stop band).
+    criteria: [{key: signups, target: 100, kind: scalable}]
+    observed: {signups: 12}
+    pivot_target: "1.4"
+    expect: {status: FAILED, outcome: STOP, alternative: PIVOT_BACK, evidence_passed: false}
+
+  - id: rate-30-of-300-boundary
+    why: Playbook. 30 sign-ups from 300 eligible visitors is exactly 10%; a locked "rate >= 10% and n >= 300" rule passes.
+    criteria: [{key: unique_visitors, target: 300, kind: floor}, {key: signup_rate, target: 0.10, kind: proportion}]
+    observed: {unique_visitors: 300, signup_rate: 0.10}
+    expect: {status: PASSED, outcome: GO, evidence_passed: true}
+
+  - id: rate-29-of-300-near-miss
+    why: 29/300 = 9.7% is 97% of target, inside the 70% repeat band, so one repeat with a named change.
+    criteria: [{key: unique_visitors, target: 300, kind: floor}, {key: signup_rate, target: 0.10, kind: proportion}]
+    observed: {unique_visitors: 300, signup_rate: 0.0967}
+    pivot_target: "1.4"
+    expect: {status: PARTIAL, outcome: REPEAT, alternative: PIVOT_BACK, evidence_passed: false}
+
+  - id: near-miss-after-two-repeats
+    why: The repeat limit is 2; a third near miss must recommend PIVOT_BACK or STOP, never another REPEAT.
+    criteria: [{key: signup_rate, target: 0.10, kind: proportion}]
+    observed: {signup_rate: 0.09}
+    repeat_count: 2
+    pivot_target: "1.4"
+    expect: {outcome: PIVOT_BACK, alternative: STOP, forced_by_repeat_limit: true}
+
+  - id: tracking-outage
+    why: A tracking outage makes the measured conversion unusable; no outcome may be assigned.
+    criteria: [{key: signup_rate, target: 0.10, kind: proportion}]
+    observed: {signup_rate: 0.30}
+    measurement_state: INVALID_DATA
+    expect: {status: NOT_EVALUABLE, outcome: null, evidence_passed: false}
+
+  - id: immature-window
+    why: The 14-day window has not closed (immature cohort); keep collecting, no outcome yet.
+    criteria: [{key: week4_retention, target: 0.20, kind: proportion}]
+    observed: {week4_retention: 0.05}
+    measurement_state: WAITING_FOR_DATA
+    expect: {status: NOT_EVALUABLE, outcome: null}
+
+  - id: missing-value-never-passes
+    why: A missing value is never filled in or treated as a pass.
+    criteria: [{key: signups, target: 100, kind: scalable}, {key: signup_rate, target: 0.10, kind: proportion}]
+    observed: {signups: 150, signup_rate: null}
+    expect: {status: NOT_EVALUABLE, outcome: null, measurement_state: INSUFFICIENT_DATA}
+
+  - id: interviews-from-two-organizations
+    why: Playbook. 10 interviews from only 2 organizations miss a 10-account floor. Biased recruitment is fixed in 1.4 under the repeat limit; a small sample is not evidence against demand, so never STOP.
+    criteria: [{key: unique_accounts, target: 10, kind: floor}, {key: problem_unprompted_rate, target: 0.6, kind: proportion}]
+    observed: {unique_accounts: 2, problem_unprompted_rate: 0.9}
+    pivot_target: "1.1"
+    expect: {status: FAILED, outcome: REPEAT, alternative: PIVOT_BACK, not_adjudicated: [problem_unprompted_rate]}
+
+  - id: traffic-floor-missed-after-repeats
+    why: Traffic floor still missed after two repeats routes back to the channel step, not STOP.
+    criteria: [{key: unique_visitors, target: 300, kind: floor}, {key: signup_rate, target: 0.10, kind: proportion}]
+    observed: {unique_visitors: 40, signup_rate: 0.25}
+    repeat_count: 2
+    pivot_target: "2.1"
+    expect: {outcome: PIVOT_BACK, alternative: STOP, not_adjudicated: [signup_rate]}
+
+  - id: failing-tests-hidden-by-traffic
+    why: On the T+E delivery gate, failing tests stay adjudicated even when the traffic floor is missed; fix and re-run.
+    criteria: [{key: delivery_tests_pass_rate, target: 1.0, kind: hard}, {key: store_visitors, target: 500, kind: floor}, {key: buy_intent_rate, target: 0.03, kind: proportion}]
+    observed: {delivery_tests_pass_rate: 0.8, store_visitors: 20, buy_intent_rate: 0.1}
+    test_gate: true
+    pivot_target: "4.1"
+    expect: {status: FAILED, outcome: REPEAT, not_adjudicated: [buy_intent_rate]}
+
+  - id: binary-price-range-miss
+    why: A 0/1 blocker (recommended price outside the acceptable range) routes back to rework, it does not prove the venture dead.
+    criteria: [{key: price_in_acceptable_range, target: 1, kind: hard}, {key: pricing_responses, target: 30, kind: floor}]
+    observed: {price_in_acceptable_range: 0, pricing_responses: 45}
+    pivot_target: "2.1"
+    expect: {status: FAILED, outcome: PIVOT_BACK, alternative: STOP}
+
+  - id: repeated-failure-after-pivot
+    why: The step already failed once and caused a pivot; failing again is repeated failure, so STOP.
+    criteria: [{key: signups, target: 100, kind: scalable}]
+    observed: {signups: 50}
+    prior_pivots: 1
+    pivot_target: "1.4"
+    expect: {outcome: STOP, alternative: PIVOT_BACK}
+
+  - id: smaller-is-better-near-miss
+    why: Median first response of 30 h against a locked <= 24 h is 80% of target, a near miss.
+    criteria: [{key: median_first_response_hours, target: 24, kind: scalable, op: "<="}]
+    observed: {median_first_response_hours: 30}
+    pivot_target: "3.2"
+    expect: {status: PARTIAL, outcome: REPEAT}
+
+  - id: all-criteria-met
+    why: Every locked criterion met.
+    criteria: [{key: independent_discussions, target: 5, kind: scalable}, {key: largest_community_members, target: 1000, kind: scalable}]
+    observed: {independent_discussions: 9, largest_community_members: 201716}
+    expect: {status: PASSED, outcome: GO, evidence_passed: true}
+
+  - id: unlocked-contract-refused
+    why: Thresholds must be locked before any evaluation.
+    criteria: [{key: signups, target: 100, kind: scalable}]
+    observed: {signups: 120}
+    unlocked: true
+    expect: {raises: GateError}

@@ -18,6 +18,9 @@ arithmetic and applies the locked decision rule exactly:
   are still adjudicated and reported; on a test gate a failing hard
   criterion means REPEAT (fix and re-run), or PIVOT_BACK after the repeat
   limit, whatever the floor shows;
+* a floor-only miss is never a STOP: too small a sample says nothing about
+  demand. It recommends REPEAT (fix recruitment or traffic), then
+  PIVOT_BACK to the channel step after the repeat limit;
 * a miss on a hard or binary criterion (kind "hard", or a target of 0 such as
   "open critical bugs <= 0", or a 0/1 flag) is a blocker, not a measure of
   demand: its percentage of target is meaningless, so on its own it never
@@ -234,12 +237,29 @@ def evaluate(contract: Contract, observed: dict[str, float | None], *, repeat_co
     weakest = min((r.pct_of_target or 0.0) for r in failed)
     gate.pct_of_target = round(weakest, 4)
     hard_failed = any(r.kind == "hard" for r in failed)
-    # Hard/binary misses are blockers: their % of target never decides the STOP band on its own.
-    graded = [r for r in failed if not _is_binary(r)]
+    can_repeat = repeat_count < REPEAT_LIMIT
+
+    if failed and all(r.kind == "floor" for r in failed):
+        # Only a sample/traffic floor was missed: demand was not measured, so this can never justify STOP.
+        # Fix recruitment or traffic and re-run (within the repeat limit), or pivot back to the channel step.
+        gate.status = "FAILED"
+        if can_repeat:
+            gate.outcome, gate.alternative = REPEAT, (PIVOT_BACK if target_step else None)
+            gate.reasons.append("Sample/traffic floor missed: demand could not be adjudicated. Fix recruitment or "
+                                "traffic and re-run; a small sample is not evidence against demand.")
+        else:
+            gate.outcome, gate.alternative = (PIVOT_BACK, STOP) if target_step else (STOP, None)
+            gate.forced_by_repeat_limit = True
+            gate.reasons.append(f"Sample/traffic floor still missed after {REPEAT_LIMIT} repeats: rethink the "
+                                "channel" + (f" ({target_step})." if target_step else "."))
+        return gate
+
+    # Hard/binary misses are blockers and floors measure sample size, not demand:
+    # neither decides the STOP band on its own.
+    graded = [r for r in failed if not _is_binary(r) and r.kind != "floor"]
     graded_weakest = min((r.pct_of_target or 0.0) for r in graded) if graded else None
     in_stop_band = graded_weakest is not None and graded_weakest < contract.stop_below
     gate.status = "PARTIAL" if (weakest >= contract.repeat_band and not hard_failed) else "FAILED"
-    can_repeat = repeat_count < REPEAT_LIMIT
 
     if test_gate and hard_failed:
         # A failing test is a fixable execution flaw: fix and re-run, within the repeat limit.
